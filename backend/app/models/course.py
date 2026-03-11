@@ -11,4 +11,3 @@ class Course(Base):
     student_id = Column(Integer, ForiegnKey("students.student_id"))
     student = relationship("Student", back_populates = "courses")
     assignment = relationship("Assignment", back_populates= "courses")
-    
