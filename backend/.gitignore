@@ -1,4 +1,4 @@
-# Python cache
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -6,32 +6,15 @@ __pycache__/
 
 # Virtual environments
 venv/
-env/
-.venv/
+.env/
+.env.*
 
-# VS Code settings
-.vscode/
-
-# Mac files
+# Mac
 .DS_Store
-
-# Environment variables (VERY IMPORTANT)
-.env
-
-# Database files 
-*.db
 
 # Logs
 *.log
 
-# Build files
-build/
-dist/
-*.egg-info/
-
-# Testing
-.coverage
-.pytest_cache/
-
-# Jupyter notebooks checkpoints
-.ipynb_checkpoints/
+# IDE
+.vscode/
+.idea/
