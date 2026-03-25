@@ -13,8 +13,8 @@ export default function Home() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let width = canvas.width = window.innerWidth;
-    let height = canvas.height = window.innerHeight;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
 
     const particles: { x: number; y: number; r: number; dx: number; dy: number }[] = [];
     const count = 120;
@@ -30,8 +30,8 @@ export default function Home() {
     }
 
     function animate() {
-      ctx.fillStyle = "rgba(10,10,30,0.2)";
-      ctx.fillRect(0, 0, width, height);
+      ctx!.fillStyle = "rgba(10,10,30,0.2)";
+      ctx!.fillRect(0, 0, width, height);
 
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
@@ -41,20 +41,22 @@ export default function Home() {
         if (p.x > width || p.x < 0) p.dx *= -1;
         if (p.y > height || p.y < 0) p.dy *= -1;
 
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,0.4)`;
-        ctx.fill();
+        ctx!.beginPath();
+        ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx!.fillStyle = `rgba(255,255,255,0.4)`;
+        ctx!.fill();
 
         for (let j = i + 1; j < particles.length; j++) {
           const q = particles[j];
           const dist = Math.hypot(p.x - q.x, p.y - q.y);
           if (dist < 150) {
-            ctx.beginPath();
-            ctx.strokeStyle = `rgba(100,150,255,${0.2 * (1 - dist / 150)})`;
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(q.x, q.y);
-            ctx.stroke();
+            ctx!.beginPath();
+            ctx!.strokeStyle = `rgba(100,150,255,${0.2 * (1 - dist / 150)})`;
+            ctx!.shadowBlur = 10;
+            ctx!.shadowColor = "rgba(100,150,255,0.2)";
+            ctx!.moveTo(p.x, p.y);
+            ctx!.lineTo(q.x, q.y);
+            ctx!.stroke();
           }
         }
       }
@@ -75,13 +77,13 @@ export default function Home() {
       <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full"></canvas>
 
       {/* Floating shapes */}
-      <div className="absolute w-12 h-12 rounded-full bg-pink-500/40 animate-bounce-slow top-16 left-10"></div>
-      <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16"></div>
-      <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28"></div>
+      <div className="absolute w-12 h-12 rounded-full bg-pink-500/40 animate-bounce-slow top-16 left-10 shadow-[0_0_30px_rgba(255,192,203,0.5)]"></div>
+      <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16 shadow-[0_0_40px_rgba(123,104,238,0.4)]"></div>
+      <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28 shadow-[0_0_25px_rgba(0,255,255,0.5)]"></div>
 
       {/* Glassmorphic card */}
-      <div className="relative backdrop-blur-3xl bg-white/5 border border-white/20 rounded-3xl p-12 max-w-md w-full text-center shadow-3xl transform transition-transform hover:scale-105 hover:rotate-1 hover:shadow-4xl">
-        <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-500 to-cyan-400 animate-text-glow mb-4 break-words">
+      <div className="relative backdrop-blur-3xl bg-white/5 border border-white/20 rounded-3xl p-12 max-w-md w-full text-center shadow-3xl transform transition-transform hover:scale-105 hover:rotate-1 hover:shadow-4xl animate-float-card">
+        <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-500 to-cyan-400 animate-text-glow mb-4 break-words max-w-full">
           IntelliGPA
         </h1>
         <p className="text-gray-300 text-lg mb-10 animate-fade-slide">
@@ -117,10 +119,15 @@ export default function Home() {
           0%,100% { transform: translateY(0); }
           50% { transform: translateY(-20px); }
         }
+        @keyframes floatCard {
+          0%,100% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-8px) rotate(0.5deg); }
+        }
 
         .animate-fade-slide { animation: fadeSlide 1s ease forwards; }
         .animate-text-glow { animation: textGlow 2s ease-in-out infinite; }
         .animate-bounce-slow { animation: bounceSlow 6s ease-in-out infinite; }
+        .animate-float-card { animation: floatCard 6s ease-in-out infinite; }
       `}</style>
     </main>
   );
