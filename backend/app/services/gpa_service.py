@@ -15,7 +15,7 @@ def calculate_term_gpa(courses: list[dict]) -> float:
     total_credits = 0
 
     for course in courses:
-        grade = courses["grade"]
+        grade = course["grade"]
         credits = course["credits"]
 
         total_points += GRADE_POINTS[grade] * credits

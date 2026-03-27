@@ -11,5 +11,8 @@ class AssignmentCategory(Base):
 
     course_id = Column(Integer, ForeignKey("courses.course_id"))
 
-    course = relationship("Course", back_populates="categories")
+    course = relationship("Course", back_populates="catergory")
     assignments = relationship("Assignment", back_populates="category")
+
+
+   
