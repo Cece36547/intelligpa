@@ -1,5 +1,3 @@
-from sqlalchemy.orm import DeclarativeBase, relationship
-from sqlalchemy import Column, Integer, String,Float,Date,DateTime, func, ForeignKey
-
+from sqlalchemy.orm import DeclarativeBase
 class Base(DeclarativeBase):
     pass

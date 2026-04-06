@@ -1,5 +1,6 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, HTTPException
 from app.schemas.student_schema import StudentCreate, StudentResponse, StudentUpdate
+from app.models.student import Student
 from app.database.db import get_db
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -7,19 +8,38 @@ from sqlalchemy.orm import Session
 
 router = APIRouter(prefix='/student', tags=["Student"])
 
-@router.post("/")
+@router.post("/", response_model=StudentResponse)
 def createStudent(student: StudentCreate, db: Session = Depends(get_db)):
+    new_student = Student(student_user_name=student.student_user_name, current_gpa=student.current_gpa, goal_gpa = student.goal_gpa)
+    db.add(new_student) 
+    db.commit()
+    db.refresh(new_student)
+    return new_student
+
+@router.get("/{student_user_name}", response_model=StudentResponse) 
+def getStudent(student_user_name: str, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.student_user_name == student_user_name).first() #querying database for student user name
+
+    if student is None: #if student is not found, throw an error 
+        raise HTTPException(status_code=404, detail="Student not found")
+    return student
+    
+
+@router.put("/{student_user_name}", response_model=StudentUpdate)
+def updateStudent(student_user_name: str, update: StudentUpdate, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+    if student is None: #if student is not found, throw an error
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    #if student is found, allow for updating info
+    student.current_gpa = update.current_gpa
+    student.goal_gpa = update.goal_gpa
+
+    db.add(student)
+    db.commit()
+    db.refresh(student)
     return student
 
-@router.get("/{student_user_name}")
-def getStudent(student_user_name: str, db: Session = Depends(get_db)):
-    student_user_name
-
-@router.put("/{student_user_name}")
-def updateStudent(student_user_name: str, update: StudentUpdate, db: Session = Depends(get_db)):
-
-
-@router.delete("/{student_user_name}")
-def deleteStudent(student_user_name: str, db: Session = Depends(get_db)):
-
-
+#@router.delete("/{student_user_name}")
+#def deleteStudent(student_user_name: str, db: Session = Depends(get_db)):
+    #student = db.query(Student)

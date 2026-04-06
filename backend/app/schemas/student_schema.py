@@ -19,6 +19,7 @@ class StudentCreate(BaseModel):
             raise ValueError(f"Grade Poing Average's must be between 0.0 and 4.0.")
         return gpa
     
+    
 class StudentResponse(BaseModel): 
     model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj
     current_gpa: Optional[float]
@@ -27,8 +28,18 @@ class StudentResponse(BaseModel):
     goal_gpa: float
 
 class StudentUpdate(BaseModel):
-    goal_gpa: Optional[float]
+    model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj
     current_gpa: Optional[float]
+    goal_gpa: Optional[float]
+
+    @classmethod
+    @field_validator("current_gpa", "goal_gpa")
+    def validate_gpa(cls, gpa: float) -> float:
+        if gpa < 0.0 or gpa > 4.0:
+            raise ValueError(f"Grade Poing Average's must be between 0.0 and 4.0.")
+        return gpa
+    
+
 
 
 
