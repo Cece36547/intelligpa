@@ -1,4 +1,4 @@
-# Python
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
@@ -6,17 +6,32 @@ __pycache__/
 
 # Virtual environments
 venv/
-.env/
-.env.*
+env/
+.venv/
 
-# Mac
+# VS Code settings
+.vscode/
+
+# Mac files
 .DS_Store
+
+# Environment variables (VERY IMPORTANT)
+.env
+
+# Database files 
+*.db
 
 # Logs
 *.log
 
-# IDE
-.vscode/
-.idea/venv/
-__pycache__/
-*.pyc
+# Build files
+build/
+dist/
+*.egg-info/
+
+# Testing
+.coverage
+.pytest_cache/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
