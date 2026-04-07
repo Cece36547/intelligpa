@@ -10,7 +10,7 @@ router = APIRouter(prefix='/student', tags=["Student"])
 
 @router.post("/", response_model=StudentResponse)
 def createStudent(student: StudentCreate, db: Session = Depends(get_db)):
-    new_student = Student(student_user_name=student.student_user_name, current_gpa=student.current_gpa, goal_gpa = student.goal_gpa)
+    new_student = Student(**student.model_dump()) 
     db.add(new_student) 
     db.commit()
     db.refresh(new_student)
@@ -25,21 +25,22 @@ def getStudent(student_user_name: str, db: Session = Depends(get_db)):
     return student
     
 
-@router.put("/{student_user_name}", response_model=StudentUpdate)
+@router.put("/{student_user_name}", response_model=StudentResponse)
 def updateStudent(student_user_name: str, update: StudentUpdate, db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
-    if student is None: #if student is not found, throw an error
+    if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    
-    #if student is found, allow for updating info
-    student.current_gpa = update.current_gpa
-    student.goal_gpa = update.goal_gpa
-
-    db.add(student)
+    for field, value in update.model_dump(exclude_none=True).items():
+        setattr(student, field, value)
     db.commit()
     db.refresh(student)
     return student
 
-#@router.delete("/{student_user_name}")
-#def deleteStudent(student_user_name: str, db: Session = Depends(get_db)):
-    #student = db.query(Student)
+@router.delete("/{student_user_name}")
+def deleteStudent(student_user_name: str, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    db.delete(student)
+    db.commit()
+    return {"message": f"Student {student_user_name} deleted successfully"}
