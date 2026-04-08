@@ -1,2 +1,3 @@
-from .base import Base
-from .db import engine, SessionLocal
+from app.database.db import engine, Session
+from app.models import student, course, assignment, assignmentCategory
+from app.database.base import Base
