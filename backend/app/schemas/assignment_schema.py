@@ -1,19 +1,21 @@
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Date
+from datetime import date
+from app.schemas.assignmentCategory_schema import responseAssignmentCategory
 from typing import Optional
 
+
 class createAssignment(BaseModel):
-    due_date: Date
+    due_date: date
     assignment_type: str
     score: float
     max_score: float
 
 class assignmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj
-    due_date: Date
-    assignment_type: str
+    title: str
+    due_date: Optional[date] = None
     score: float
-    max_score: Optional[float]
+    max_score: Optional[float] = None
 
 class updateAssignmen(BaseModel):
     assignment_type: Optional[str]
