@@ -5,15 +5,23 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
+// Import your SQL and parser helpers
+//import { queryDatabase } from "@/lib/db";
+//import { parseData } from "@/lib/parser";
+
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [dbData, setDbData] = useState<any[]>([]);
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const router = useRouter();
 
+  // Mounted state for SSR safety
   useEffect(() => setMounted(true), []);
 
-  // Check auth state
+  // Firebase auth state check
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (!currentUser) {
@@ -29,6 +37,22 @@ export default function DashboardPage() {
     await signOut(auth);
     router.push("/login");
   };
+
+  // Fetch and parse database data
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        //const rawData = await queryDatabase("SELECT * FROM your_table");
+        //setDbData(rawData);
+       // setParsedData(rawData.map(parseData));
+      } catch (err) {
+        console.error("Error fetching data:", err);
+      } finally {
+        setLoadingData(false);
+      }
+    }
+    fetchData();
+  }, []);
 
   // Holographic particles background
   useEffect(() => {
@@ -111,7 +135,7 @@ export default function DashboardPage() {
       <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28 shadow-[0_0_25px_rgba(0,255,255,0.5)]"></div>
 
       {/* Glassmorphic Dashboard card */}
-      <div className="relative backdrop-blur-3xl bg-white/5 border border-white/20 rounded-3xl p-12 max-w-2xl w-full text-center shadow-3xl transform transition-transform hover:scale-105 hover:rotate-1 hover:shadow-4xl animate-float-card">
+      <div className="relative backdrop-blur-3xl bg-white/5 border border-white/20 rounded-3xl p-12 max-w-2xl w-full text-center shadow-3xl transform transition-transform hover:scale-105 hover:rotate-1 hover:shadow-4xl animate-float-card overflow-y-auto max-h-[80vh]">
         <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-500 to-cyan-400 animate-glow-text mb-6">
           Dashboard
         </h1>
@@ -121,13 +145,33 @@ export default function DashboardPage() {
             <p className="mb-4 text-gray-200">Logged in as: {user.email}</p>
             <button
               onClick={handleLogout}
-              className="rounded bg-red-600 text-white px-4 py-2 shadow-lg hover:shadow-2xl transition-all duration-300"
+              className="rounded bg-red-600 text-white px-4 py-2 shadow-lg hover:shadow-2xl transition-all duration-300 mb-6"
             >
               Log Out
             </button>
+
+            {loadingData ? (
+              <p className="text-gray-200">Loading data...</p>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold mt-6 mb-2 text-gray-100">Database Records</h2>
+                <ul className="list-disc list-inside text-gray-200 mb-4">
+                  {dbData.map((item, idx) => (
+                    <li key={idx}>{JSON.stringify(item)}</li>
+                  ))}
+                </ul>
+
+                <h2 className="text-xl font-bold mb-2 text-gray-100">Parsed Data</h2>
+                <ul className="list-disc list-inside text-gray-200">
+                  {parsedData.map((item, idx) => (
+                    <li key={idx}>{JSON.stringify(item)}</li>
+                  ))}
+                </ul>
+              </>
+            )}
           </>
         ) : (
-          <p className="text-gray-200">Loading...</p>
+          <p className="text-gray-200">Loading user...</p>
         )}
       </div>
 
