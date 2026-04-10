@@ -3,13 +3,15 @@ from app.schemas.course_schema import courseResponse, createCourse
 from app.services.syllabus_service import process_syllabus
 from app.models.student import Student
 from app.models.course import Course
+from app.models.assignmentCategory import AssignmentCategory
+from app.models.assignment import Assignment
 from app.database.db import get_db
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix='/course', tags=["Course"])
 
-@router.post("/course/{student_user_name}", response_model=courseResponse)
+@router.post("/{student_user_name}", response_model=courseResponse)
 async def addCourse(student_user_name: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     #Checking if Student exist 
     student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
@@ -42,10 +44,23 @@ async def addCourse(student_user_name: str, file: UploadFile = File(...), db: Se
     
     db.add(new_course)
     db.commit()
+    category_map = {} # Creating categories and store in dictionary for lookup
+    for cat in parsed["assignment_categories"]:
+        new_category = AssignmentCategory(category_name=cat["category_name"], weight=cat["weight_percent"], course_id=new_course.course_id)
+        db.add(new_category)
+        db.flush()
+        category_map[cat["category_name"]] = new_category
+
+    #Creating assignments using category_map to link them
+    for assign in parsed["assignments"]:
+        matched_category = category_map.get(assign["category_name"])
+        new_assignment = Assignment(title=assign["title"], assignment_type=assign["type"], due_date=assign["due_date"], max_score=assign["max_points"], score=None, course_id=new_course.course_id, category_id=matched_category.category_id if matched_category else None)
+        db.add(new_assignment)
+        db.flush()
     db.refresh(new_course)
     return new_course
 
-@router.get("/course/{student_user_name}", response_model=list[courseResponse])
+@router.get("/{student_user_name}", response_model=list[courseResponse])
 def getClass(student_user_name: str, db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
     if student is None: #if student is not found, throw an error 
@@ -56,3 +71,14 @@ def getClass(student_user_name: str, db: Session = Depends(get_db)):
     return courses
 
 
+@router.delete("/{student_user_name}/{course_name}")
+def deleteClass(student_user_name: str, course_name: str, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    course = db.query(Course).filter(Course.student_user_name == student_user_name,Course.course_name == course_name).first()
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    db.delete(course)
+    db.commit()
+    return {"message": f"Course {course_name} deleted successfully"}
