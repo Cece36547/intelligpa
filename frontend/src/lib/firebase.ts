@@ -2,12 +2,13 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDDPpBt3nqQ41sgsREMmFR9x263BW1NpMQ",
-  authDomain: "intelligpa.firebaseapp.com",
-  projectId: "intelligpa",
-  storageBucket: "intelligpa.firebasestorage.app",
-  messagingSenderId: "65579267132",
-  appId: "1:65579267132:web:32d066d63d9fe53727ff39",
+  apiKey: "AIzaSyA67OEk3wy7MmFGwCVq8t1-rHcIe_iGhnA",
+  authDomain: "intelligpa-c883a.firebaseapp.com",
+  projectId: "intelligpa-c883a",
+  storageBucket: "intelligpa-c883a.firebasestorage.app",
+  messagingSenderId: "141982214717",
+  appId: "1:141982214717:web:f27939cb6967886eb31854",
+  measurementId: "G-YL388T9YW7",
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
