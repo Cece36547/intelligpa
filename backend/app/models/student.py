@@ -8,6 +8,7 @@ class Student(Base):
     current_gpa = Column(Float)
     goal_gpa = Column(Float)
     created_at = Column(DateTime,default = func.now())
-    
+    email = Column(String(255), unique=True)
+    firebase_uid = Column(String(128), unique=True)
     #Defined Relationship
     courses = relationship("Course", back_populates="student")

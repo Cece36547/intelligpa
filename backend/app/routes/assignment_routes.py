@@ -6,12 +6,13 @@ from app.models.course import Course
 from app.database.db import get_db
 from fastapi import Depends
 from sqlalchemy.orm import Session
+from app.firebase_auth import verify_firebase_token
 
 router = APIRouter(prefix='/assignment', tags=["Assignment"])
 
-@router.post("/{student_user_name}/{course_name}")
-def addAssignment(student_user_name: str, course_name: str, assignment: createAssignment, db: Session = Depends(get_db)):
-    exists = db.query(Course).join(Student).filter(Student.student_user_name == student_user_name,Course.course_name == course_name).first()
+@router.post("/{course_name}")
+def addAssignment(course_name: str, assignment: createAssignment, user = Depends(verify_firebase_token), db: Session = Depends(get_db)):
+    exists = db.query(Course).join(Student).filter(Student.firebase_uid == user["uid"],Course.course_name == course_name).first()
     if exists is None:
         raise HTTPException(status_code=404, detail="Student or course not found")
     q_assignment = db.query(Assignment).filter(Assignment.title == assignment.title,Assignment.course_id == exists.course_id).first()
@@ -23,18 +24,12 @@ def addAssignment(student_user_name: str, course_name: str, assignment: createAs
     db.refresh(new_assignment)
     return new_assignment
 
-@router.put("/{student_user_name}/{course_name}/{title}", response_model=assignmentResponse)
-def updateAssignment(student_user_name: str, course_name: str, title: str, update: updateAssignment, db: Session = Depends(get_db)):
-    exists = db.query(Course).join(Student).filter(
-        Student.student_user_name == student_user_name,
-        Course.course_name == course_name
-    ).first()
+@router.put("{course_name}/{title}", response_model=assignmentResponse)
+def updateAssignment(course_name: str, title: str, update:updateAssignment, user = Depends(verify_firebase_token),db: Session = Depends(get_db)):
+    exists = db.query(Course).join(Student).filter(Student.firebase_uid == user["uid"],Course.course_name == course_name).first()
     if exists is None:
         raise HTTPException(status_code=404, detail="Student or course not found")
-    q_assignment = db.query(Assignment).filter(
-        Assignment.title == title,
-        Assignment.course_id == exists.course_id
-    ).first()
+    q_assignment = db.query(Assignment).filter(Assignment.title == title,Assignment.course_id == exists.course_id).first()
     if q_assignment is None:
         raise HTTPException(status_code=404, detail="Assignment not found")
     for field, value in update.model_dump(exclude_none=True).items():
@@ -44,14 +39,14 @@ def updateAssignment(student_user_name: str, course_name: str, title: str, updat
     return q_assignment
 
 
-@router.delete("/{student_user_name}/{course_name}/{title}")
-def deleteClass(student_user_name: str,course_name: str,title: str,db: Session=Depends(get_db)):
+@router.delete("/{course_name}/{title}")
+def deleteClass(course_name: str,title: str,user=Depends(verify_firebase_token),db: Session=Depends(get_db)):
     #Checking if student exists
-    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
     if student is None: #if student is not found, throw an error 
         raise HTTPException(status_code=404, detail="Student not found")
     #Checking if Course exists
-    existing_course = db.query(Course).filter(Course.student_user_name == student_user_name, Course.course_name == course_name).first()
+    existing_course = db.query(Course).filter(Course.student_user_name == student.student_user_name, Course.course_name == course_name).first()
     if existing_course is None: #
         raise HTTPException(status_code=404, detail="Course not found ")
     

@@ -35,3 +35,8 @@ dist/
 
 # Jupyter notebooks checkpoints
 .ipynb_checkpoints/
+
+# Alembic - DB URL is loaded from .env, not alembic.ini
+
+# Firebase
+app/firebase_service_account.json
