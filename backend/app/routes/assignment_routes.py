@@ -24,7 +24,7 @@ def addAssignment(course_name: str, assignment: createAssignment, user = Depends
     db.refresh(new_assignment)
     return new_assignment
 
-@router.put("{course_name}/{title}", response_model=assignmentResponse)
+@router.put("/{course_name}/{title}", response_model=assignmentResponse)
 def updateAssignment(course_name: str, title: str, update:updateAssignment, user = Depends(verify_firebase_token),db: Session = Depends(get_db)):
     exists = db.query(Course).join(Student).filter(Student.firebase_uid == user["uid"],Course.course_name == course_name).first()
     if exists is None:
@@ -51,7 +51,7 @@ def deleteClass(course_name: str,title: str,user=Depends(verify_firebase_token),
         raise HTTPException(status_code=404, detail="Course not found ")
     
     #Checking if Assignment Exist
-    assignment = db.query(Assignment).filter(Assignment.title == title).first()
+    assignment = db.query(Assignment).filter(Assignment.title == title, Assignment.course_id== existing_course.course_id).first()
     if assignment is None: 
         raise HTTPException(status_code=404, detail="Assignment not found ")
     db.delete(assignment)

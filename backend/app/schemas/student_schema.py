@@ -6,6 +6,8 @@ class StudentCreate(BaseModel):
     student_user_name: str
     current_gpa: Optional[float] = None # Students can start off with no GPA
     goal_gpa: float
+    email: Optional[str] = None
+    firebase_uid: Optional[str] = None
 
     @field_validator("student_user_name") #Username must be > 6
     def validate_user_name(cls,user_name):

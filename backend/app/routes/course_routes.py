@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from app.schemas.course_schema import courseResponse
 from app.services.syllabus_service import process_syllabus
 from app.models.student import Student
@@ -6,7 +6,6 @@ from app.models.course import Course
 from app.models.assignmentCategory import AssignmentCategory
 from app.models.assignment import Assignment
 from app.database.db import get_db
-from fastapi import Depends
 from sqlalchemy.orm import Session
 from app.firebase_auth import verify_firebase_token
 

@@ -10,6 +10,13 @@ class createAssignment(BaseModel):
     assignment_type: str
     score: Optional[float] = None
     max_score: Optional[float] = None
+    @model_validator(mode="after")
+
+    def validate_date(self) -> "updateAssignment":
+        if self.due_date is not None:
+            if self.due_date < date.today():
+                raise ValueError("Due date cannot be in the past.")
+        return self
 
 class assignmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj
