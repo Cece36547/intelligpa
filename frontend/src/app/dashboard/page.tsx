@@ -40,6 +40,10 @@ export default function DashboardPage() {
     });
     return () => unsubscribe();
   }, [router]);
+  //TEMPORARY: USING FOR TESTING
+  useEffect(() => {
+  auth.currentUser?.getIdToken().then(token => console.log("TOKEN:", token))
+}, [])
 
   const handleLogout = async () => {
     await signOut(auth);
