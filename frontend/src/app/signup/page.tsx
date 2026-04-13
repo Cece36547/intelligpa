@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,6 +10,11 @@ import {
   OAuthProvider,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+
+// Memoized so it NEVER re-renders when typing — fixes input lag
+const ParticleCanvas = memo(function ParticleCanvas({ canvasRef }: { canvasRef: React.RefObject<HTMLCanvasElement | null> }) {
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />;
+});
 
 type Step = "auth" | "profile";
 type ProfileSubStep = "username" | "currentGpa" | "goalGpa" | "done";
@@ -27,16 +32,14 @@ function GpaArc({ value, max = 4.0, color }: { value: number; max?: number; colo
   const pct = Math.min(value / max, 1);
   const r = 54;
   const circ = 2 * Math.PI * r;
-  const dash = pct * circ * 0.75; // 270deg arc
+  const dash = pct * circ * 0.75;
   const gap = circ - dash;
 
   return (
     <div className="relative flex items-center justify-center w-36 h-36 mx-auto">
       <svg viewBox="0 0 120 120" className="absolute inset-0 w-full h-full -rotate-[135deg]">
-        {/* Track */}
         <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(255,255,255,0.08)"
           strokeWidth="10" strokeDasharray={`${circ * 0.75} ${circ * 0.25}`} strokeLinecap="round" />
-        {/* Fill */}
         <circle cx="60" cy="60" r={r} fill="none" stroke={color}
           strokeWidth="10"
           strokeDasharray={`${dash} ${gap + circ * 0.25}`}
@@ -93,7 +96,6 @@ export default function SignUpPage() {
     }, 280);
   };
 
-  // Auth handlers
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(""); setAuthLoading(true);
@@ -126,17 +128,14 @@ export default function SignUpPage() {
     finally { setAuthLoading(false); }
   };
 
-  // Profile submit
   const handleFinish = async () => {
     if (!goalGpa) return;
     setProfileLoading(true);
     try {
-      // Store profile locally immediately so dashboard works even if backend is offline
       localStorage.setItem("student_user_name", username);
       if (currentGpa !== null) localStorage.setItem("current_gpa", String(currentGpa));
       if (goalGpa !== null) localStorage.setItem("goal_gpa", String(goalGpa));
 
-      // Try to save to backend — but don't block on failure
       try {
         const res = await fetch("http://localhost:8000/student/", {
           method: "POST",
@@ -160,7 +159,7 @@ export default function SignUpPage() {
     finally { setProfileLoading(false); }
   };
 
-  // Particles
+  // Particles — only runs once on mount
   useEffect(() => {
     if (!mounted) return;
     const canvas = canvasRef.current;
@@ -174,6 +173,7 @@ export default function SignUpPage() {
       r: Math.random() * 3 + 1,
       dx: (Math.random() - 0.5) * 1.2, dy: (Math.random() - 0.5) * 1.2,
     }));
+    let raf: number;
     function draw() {
       ctx!.fillStyle = "rgba(10,10,30,0.2)";
       ctx!.fillRect(0, 0, w, h);
@@ -193,12 +193,12 @@ export default function SignUpPage() {
           }
         });
       });
-      requestAnimationFrame(draw);
+      raf = requestAnimationFrame(draw);
     }
     draw();
     const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); };
   }, [mounted]);
 
   if (!mounted) return null;
@@ -209,7 +209,7 @@ export default function SignUpPage() {
 
   return (
     <main className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-black via-purple-900 to-indigo-900 px-4 py-12">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+      <ParticleCanvas canvasRef={canvasRef} />
       <div className="absolute w-12 h-12 rounded-full bg-pink-500/40 animate-bounce-slow top-16 left-10 shadow-[0_0_30px_rgba(255,192,203,0.5)]" />
       <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16 shadow-[0_0_40px_rgba(123,104,238,0.4)]" />
       <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28 shadow-[0_0_25px_rgba(0,255,255,0.5)]" />
@@ -286,7 +286,6 @@ export default function SignUpPage() {
           {/* ── PROFILE: USERNAME ── */}
           {step === "profile" && profileSubStep === "username" && (
             <div>
-              {/* Fun avatar - orbiting emoji planet */}
               {(() => {
                 const AVATARS = ["🦊","🐼","🦋","🐸","🦄","🐙","🦩","🐬","🦁","🐧","🦖","🌟","🔥","💎","🚀"];
                 const MOONS =   ["⭐","💫","✨","🌙","💥","🎯","🎪","🎨","🎭","🎬","🎮","🏆","💡","🔮","🎲"];
@@ -297,26 +296,19 @@ export default function SignUpPage() {
                 return (
                   <div className="flex flex-col items-center mb-4">
                     <div className="relative w-32 h-32 flex items-center justify-center select-none">
-                      {/* Outer spinning ring */}
                       <div className={`absolute inset-0 rounded-full border-2 border-dashed transition-all duration-700
                         ${ready ? "border-purple-400/50 animate-spin-slow" : "border-white/10"}`} />
-                      {/* Inner glow disc */}
                       <div className={`absolute w-20 h-20 rounded-full transition-all duration-500
-                        ${ready
-                          ? "bg-gradient-to-br from-pink-500/40 via-purple-600/40 to-cyan-500/40 blur-lg scale-110"
-                          : "bg-white/5 blur-sm"}`} />
-                      {/* Orbiting moon */}
+                        ${ready ? "bg-gradient-to-br from-pink-500/40 via-purple-600/40 to-cyan-500/40 blur-lg scale-110" : "bg-white/5 blur-sm"}`} />
                       {ready && (
                         <span className="absolute text-lg animate-orbit" style={{ top: 4, right: 8 }}>{moon}</span>
                       )}
-                      {/* Main emoji */}
                       <span
                         className={`relative text-5xl transition-all duration-500 z-10 ${ready ? "animate-float-emoji scale-110" : "opacity-40 scale-90"}`}
                         style={{ filter: ready ? "drop-shadow(0 0 16px rgba(168,85,247,1)) drop-shadow(0 0 6px rgba(34,211,238,0.6))" : "grayscale(1)" }}
                       >
                         {emoji ?? "🎓"}
                       </span>
-                      {/* Sparkle burst on ready */}
                       {ready && (
                         <>
                           <span className="absolute top-2 left-6 text-xs animate-twinkle" style={{animationDelay:"0s"}}>✦</span>
@@ -325,12 +317,8 @@ export default function SignUpPage() {
                         </>
                       )}
                     </div>
-                    {/* @handle pill */}
                     <div className={`px-4 py-1.5 rounded-full text-sm font-mono transition-all duration-300
-                      ${username.length > 0
-                        ? "bg-white/10 border border-purple-400/40 text-white shadow-sm shadow-purple-500/20"
-                        : "bg-white/5 border border-white/10 text-gray-600"
-                      }`}>
+                      ${username.length > 0 ? "bg-white/10 border border-purple-400/40 text-white shadow-sm shadow-purple-500/20" : "bg-white/5 border border-white/10 text-gray-600"}`}>
                       @{username.length > 0 ? username.toLowerCase().replace(/\s/g, "_") : "username"}
                     </div>
                     {username.length >= 6 && (
@@ -383,10 +371,7 @@ export default function SignUpPage() {
                   { label: "under 20", ok: username.length <= 20 && username.length > 0 },
                 ].map(rule => (
                   <span key={rule.label} className={`text-xs px-2.5 py-1 rounded-full border transition-all duration-200
-                    ${rule.ok
-                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-                      : "bg-white/5 border-white/15 text-gray-500"
-                    }`}>
+                    ${rule.ok ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" : "bg-white/5 border-white/15 text-gray-500"}`}>
                     {rule.ok ? "✓" : "·"} {rule.label}
                   </span>
                 ))}
@@ -409,13 +394,11 @@ export default function SignUpPage() {
               <h2 className="text-3xl font-extrabold text-white mb-1">Where are you now?</h2>
               <p className="text-gray-400 text-sm mb-6">Enter your current GPA, or skip if you're just starting out</p>
 
-              {/* Live GPA arc */}
               <GpaArc value={currentGpa ?? 0} color="#a855f7" />
 
               <div className="mt-6">
                 <input
-                  type="range"
-                  min="0" max="4.0" step="0.1"
+                  type="range" min="0" max="4.0" step="0.1"
                   value={currentGpa ?? 0}
                   onChange={e => setCurrentGpa(parseFloat(e.target.value))}
                   className="w-full accent-purple-400 cursor-pointer"
@@ -440,10 +423,8 @@ export default function SignUpPage() {
               <h2 className="text-3xl font-extrabold text-white mb-1">Set your target</h2>
               <p className="text-gray-400 text-sm mb-6">What GPA are you aiming for?</p>
 
-              {/* Live GPA arc for goal */}
               <GpaArc value={goalGpa ?? 0} color="#22d3ee" />
 
-              {/* Preset cards */}
               <div className="grid grid-cols-2 gap-2 mt-6 mb-4">
                 {GOAL_PRESETS.map(p => (
                   <button
@@ -451,9 +432,7 @@ export default function SignUpPage() {
                     type="button"
                     onClick={() => { setSelectedPreset(p.label); setGoalGpa(parseFloat(p.value)); setCustomGoal(""); }}
                     className={`flex items-start gap-2 p-3 rounded-xl border text-left text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]
-                      ${selectedPreset === p.label
-                        ? "bg-cyan-500/20 border-cyan-400/50 text-white shadow-lg shadow-cyan-500/10"
-                        : "bg-white/5 border-white/15 text-gray-300 hover:bg-white/10"}`}
+                      ${selectedPreset === p.label ? "bg-cyan-500/20 border-cyan-400/50 text-white shadow-lg shadow-cyan-500/10" : "bg-white/5 border-white/15 text-gray-300 hover:bg-white/10"}`}
                   >
                     <span className="text-xl mt-0.5">{p.emoji}</span>
                     <div>
@@ -464,12 +443,10 @@ export default function SignUpPage() {
                 ))}
               </div>
 
-              {/* Custom slider */}
               <div className="mb-2">
                 <label className="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Or drag to set custom goal</label>
                 <input
-                  type="range"
-                  min="0" max="4.0" step="0.1"
+                  type="range" min="0" max="4.0" step="0.1"
                   value={goalGpa ?? 0}
                   onChange={e => { setGoalGpa(parseFloat(e.target.value)); setSelectedPreset(null); }}
                   className="w-full accent-cyan-400 cursor-pointer"
@@ -518,23 +495,23 @@ export default function SignUpPage() {
         @keyframes bounceSlow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
         @keyframes floatCard { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-8px) rotate(0.5deg); } }
         @keyframes bounceOnce { 0%,100% { transform: translateY(0); } 30% { transform: translateY(-20px); } 60% { transform: translateY(-8px); } }
-
-        .animate-glow-text { animation: glowText 2s ease-in-out infinite; }
-        .animate-bounce-slow { animation: bounceSlow 6s ease-in-out infinite; }
-        .animate-float-card { animation: floatCard 6s ease-in-out infinite; }
         @keyframes wiggle { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
         @keyframes popIn { 0% { transform: scale(0); opacity:0; } 70% { transform: scale(1.3); } 100% { transform: scale(1); opacity:1; } }
-        .animate-wiggle { animation: wiggle 0.6s ease-in-out infinite; }
-        .animate-pop-in { animation: popIn 0.4s cubic-bezier(.4,0,.2,1) forwards; }
         @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes orbit { 0% { transform: rotate(0deg) translateX(44px) rotate(0deg); } 100% { transform: rotate(360deg) translateX(44px) rotate(-360deg); } }
         @keyframes floatEmoji { 0%,100% { transform: translateY(0) scale(1.1); } 50% { transform: translateY(-6px) scale(1.15); } }
         @keyframes twinkle { 0%,100% { opacity:0; transform:scale(0.5); } 50% { opacity:1; transform:scale(1.2); } }
+
+        .animate-glow-text { animation: glowText 2s ease-in-out infinite; }
+        .animate-bounce-slow { animation: bounceSlow 6s ease-in-out infinite; }
+        .animate-float-card { animation: floatCard 6s ease-in-out infinite; }
+        .animate-bounce-once { animation: bounceOnce 1s ease forwards; }
+        .animate-wiggle { animation: wiggle 0.6s ease-in-out infinite; }
+        .animate-pop-in { animation: popIn 0.4s cubic-bezier(.4,0,.2,1) forwards; }
         .animate-spin-slow { animation: spinSlow 4s linear infinite; }
         .animate-orbit { animation: orbit 2.5s linear infinite; }
         .animate-float-emoji { animation: floatEmoji 2s ease-in-out infinite; }
         .animate-twinkle { animation: twinkle 1.2s ease-in-out infinite; }
-        .animate-bounce-once { animation: bounceOnce 1s ease forwards; }
 
         input[type=range] { height: 6px; border-radius: 9999px; }
       `}</style>
