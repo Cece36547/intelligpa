@@ -52,7 +52,7 @@ def getClass(student_user_name: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Student not found")
     courses = db.query(Course).filter(Course.student_user_name == student_user_name).all() # return back all courses associated with specific student
     if not courses:
-        return {"message": "No classes added yet"}
+        return []
     return courses
 
 

@@ -1,238 +1,594 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { useRouter, usePathname } from "next/navigation";
 
-const navLinks = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Calendar", href: "/calendar" },
+const NAVLINKS = [
+  { label: "Dashboard",     href: "/dashboard" },
+  { label: "Calendar",      href: "/calendar" },
   { label: "GPA Predictor", href: "/gpa-predictor" },
-  { label: "Profile", href: "/profile" },
+  { label: "Profile",       href: "/profile" },
 ];
-
 const AVATARS = ["🦊","🐼","🦋","🐸","🦄","🐙","🦩","🐬","🦁","🐧","🦖","🌟","🔥","💎","🚀"];
+const COURSE_COLORS = ["#818cf8","#38bdf8","#fb7185","#34d399","#fb923c","#a78bfa"];
+const GRADE_COLORS: Record<string,string> = {
+  "A":"#22c55e","A-":"#4ade80","B+":"#38bdf8","B":"#60a5fa","B-":"#818cf8",
+  "C+":"#fbbf24","C":"#f59e0b","C-":"#fb923c","D+":"#f87171","D":"#ef4444","F":"#dc2626",
+};
 
-export default function DashboardPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const [username, setUsername] = useState("");
-  const [currentGpa, setCurrentGpa] = useState<string | null>(null);
-  const [goalGpa, setGoalGpa] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const router = useRouter();
-  const pathname = usePathname();
+function getGrade(gpa: number) {
+  const p = (gpa / 4) * 100;
+  if (p >= 93) return "A";  if (p >= 90) return "A-"; if (p >= 87) return "B+";
+  if (p >= 83) return "B";  if (p >= 80) return "B-"; if (p >= 77) return "C+";
+  if (p >= 73) return "C";  if (p >= 70) return "C-"; if (p >= 67) return "D+";
+  if (p >= 60) return "D";  return "F";
+}
 
-  useEffect(() => setMounted(true), []);
-
-  // Load profile from localStorage
+// ── Memoized particle canvas — never re-renders on state change ───────────────
+const ParticleCanvas = memo(function ParticleCanvas() {
+  const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    setUsername(localStorage.getItem("student_user_name") ?? "");
-    setCurrentGpa(localStorage.getItem("current_gpa"));
-    setGoalGpa(localStorage.getItem("goal_gpa"));
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!currentUser) router.push("/login");
-      else setUser(currentUser);
-    });
-    return () => unsubscribe();
-  }, [router]);
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    localStorage.clear();
-    router.push("/login");
-  };
-
-  // Particles
-  useEffect(() => {
-    if (!mounted) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-    const particles: { x: number; y: number; r: number; dx: number; dy: number }[] = [];
-
-    for (let i = 0; i < 120; i++) {
-      particles.push({
-        x: Math.random() * width, y: Math.random() * height,
-        r: Math.random() * 3 + 1,
-        dx: (Math.random() - 0.5) * 1.2, dy: (Math.random() - 0.5) * 1.2,
-      });
-    }
-
-    function animate() {
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    let w = canvas.width  = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+    const pts = Array.from({ length: 80 }, () => ({
+      x: Math.random()*w, y: Math.random()*h,
+      r: Math.random()*2+.5, dx:(Math.random()-.5)*.8, dy:(Math.random()-.5)*.8,
+    }));
+    let raf: number;
+    function draw() {
       if (!ctx) return;
-      ctx.fillStyle = "rgba(10,10,30,0.2)";
-      ctx.fillRect(0, 0, width, height);
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        p.x += p.dx; p.y += p.dy;
-        if (p.x > width || p.x < 0) p.dx *= -1;
-        if (p.y > height || p.y < 0) p.dy *= -1;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.4)";
-        ctx.fill();
-        for (let j = i + 1; j < particles.length; j++) {
-          const q = particles[j];
-          const dist = Math.hypot(p.x - q.x, p.y - q.y);
-          if (dist < 150) {
+      ctx.fillStyle = "rgba(7,6,15,0.25)"; ctx.fillRect(0,0,w,h);
+      for (let i=0; i<pts.length; i++) {
+        const p = pts[i]; p.x+=p.dx; p.y+=p.dy;
+        if (p.x>w||p.x<0) p.dx*=-1; if (p.y>h||p.y<0) p.dy*=-1;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.fill();
+        for (let j=i+1; j<pts.length; j++) {
+          const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d2=dx*dx+dy*dy;
+          if (d2<14000) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(100,150,255,${0.2 * (1 - dist / 150)})`;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "rgba(100,150,255,0.2)";
-            ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
-            ctx.stroke();
+            ctx.strokeStyle=`rgba(120,160,255,${.14*(1-d2/14000)})`;
+            ctx.lineWidth=.5; ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
           }
         }
       }
-      requestAnimationFrame(animate);
+      raf = requestAnimationFrame(draw);
     }
-    animate();
-
-    const resize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; };
+    draw();
+    const resize = () => { w=canvas.width=window.innerWidth; h=canvas.height=window.innerHeight; };
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, [mounted]);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+  return <canvas ref={ref} style={{position:"fixed",inset:0,width:"100%",height:"100%",pointerEvents:"none",zIndex:0}}/>;
+});
 
-  if (!mounted) return null;
+// ── Add Course Modal ──────────────────────────────────────────────────────────
+// Connects to: POST /course/course/{student_user_name}
+// Accepts: multipart/form-data with field "file" (PDF)
+// Returns: courseResponse { course_id, course_name, instructor, credits, categories[] }
 
-  const avatarEmoji = username ? AVATARS[username.charCodeAt(0) % AVATARS.length] : "🎓";
-  const gpaProgress = goalGpa ? Math.min((parseFloat(currentGpa ?? "0") / parseFloat(goalGpa)) * 100, 100) : 0;
+function AddCourseModal({
+  username,
+  onClose,
+  onSuccess,
+}: {
+  username: string;
+  onClose: () => void;
+  onSuccess: (course: any) => void;
+}) {
+  const [file, setFile]         = useState<File|null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError]       = useState("");
+  const [done, setDone]         = useState(false);
+  const [result, setResult]     = useState<any>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (f: File) => {
+    if (f.type !== "application/pdf") { setError("Only PDF files are accepted."); return; }
+    setFile(f); setError("");
+  };
+
+  const handleUpload = async () => {
+    if (!file || !username) return;
+    setUploading(true); setError("");
+
+    // Build multipart form — backend expects field name "file"
+    const fd = new FormData();
+    fd.append("file", file);
+
+    try {
+      // POST /course/course/{student_user_name}  — single call does parse + save
+      const res = await fetch(`http://localhost:8000/course/course/${username}`, {
+        method: "POST",
+        body: fd,
+        // Do NOT set Content-Type header — browser sets it with boundary automatically
+      });
+
+      if (res.status === 409) {
+        setError("This course already exists for your account.");
+        return;
+      }
+      if (!res.ok) {
+        const detail = await res.json().then(d => d.detail).catch(() => res.statusText);
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+
+      const course = await res.json();
+      setResult(course);
+      setDone(true);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
-    <main className="relative min-h-screen flex flex-col overflow-hidden bg-gradient-to-br from-black via-purple-900 to-indigo-900">
-      <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      {/* Backdrop */}
+      <div onClick={!uploading ? onClose : undefined}
+        style={{position:"absolute",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(16px)",cursor:uploading?"default":"pointer"}}/>
 
-      {/* Navbar */}
-      <nav className="relative z-50 backdrop-blur-xl bg-white/5 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <span onClick={() => router.push("/dashboard")} className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 cursor-pointer select-none">
-            IntelliGPA
-          </span>
-          <ul className="flex items-center gap-8">
-            {navLinks.map(({ label, href }) => {
-              const isActive = pathname === href;
-              return (
-                <li key={href}>
-                  <button onClick={() => router.push(href)}
-                    className={`relative text-sm font-semibold tracking-wide transition-all duration-300 pb-1 ${isActive ? "text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-cyan-400" : "text-gray-300 hover:text-white"}`}>
-                    {label}
-                    {isActive && <span className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 shadow-[0_0_6px_rgba(200,100,255,0.8)]" />}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </nav>
+      <div style={{
+        position:"relative",width:"100%",maxWidth:520,
+        background:"linear-gradient(135deg,rgba(79,70,229,.15),rgba(7,6,15,.99))",
+        border:"1px solid rgba(255,255,255,.1)",borderRadius:28,
+        boxShadow:"0 0 0 1px rgba(255,255,255,.03) inset, 0 50px 120px rgba(0,0,0,.9)",
+      }}>
+        {/* Top shimmer line */}
+        <div style={{height:1,background:"linear-gradient(90deg,transparent,rgba(167,139,250,.8),rgba(56,189,248,.5),transparent)",borderRadius:"28px 28px 0 0"}}/>
 
-      {/* Floating shapes */}
-      <div className="absolute w-12 h-12 rounded-full bg-pink-500/40 animate-bounce-slow top-16 left-10 shadow-[0_0_30px_rgba(255,192,203,0.5)]" />
-      <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16 shadow-[0_0_40px_rgba(123,104,238,0.4)]" />
-      <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28 shadow-[0_0_25px_rgba(0,255,255,0.5)]" />
+        <div style={{padding:"32px 36px"}}>
 
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-10">
-        <div className="backdrop-blur-3xl bg-white/5 border border-white/20 rounded-3xl p-10 max-w-2xl w-full shadow-3xl animate-float-card">
+          {/* ── SUCCESS STATE ── */}
+          {done && result ? (
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:20,textAlign:"center",padding:"8px 0"}}>
+              <div style={{fontSize:52}}>🎉</div>
+              <div>
+                <h2 style={{fontSize:22,fontWeight:800,color:"white",margin:"0 0 6px",letterSpacing:"-.02em"}}>{result.course_name}</h2>
+                {result.instructor && <p style={{fontSize:12,color:"rgba(156,163,175,1)",margin:0}}>{result.instructor}</p>}
+              </div>
 
-          {user ? (
-            <>
+              {/* What was extracted */}
+              <div style={{width:"100%",padding:"14px 16px",borderRadius:14,background:"rgba(74,222,128,.06)",border:"1px solid rgba(74,222,128,.2)"}}>
+                <div style={{fontSize:10,color:"#4ade80",fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",marginBottom:10}}>Successfully extracted</div>
+                <div style={{display:"flex",justifyContent:"center",gap:16}}>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:24,fontWeight:900,color:"#4ade80"}}>{(result.categories ?? []).length}</div>
+                    <div style={{fontSize:9,color:"rgba(107,114,128,1)",textTransform:"uppercase",letterSpacing:".1em",marginTop:2}}>Categories</div>
+                  </div>
+                  <div style={{width:1,background:"rgba(255,255,255,.06)"}}/>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:24,fontWeight:900,color:"#38bdf8"}}>
+                      {(result.categories ?? []).reduce((s: number, c: any) => s + (c.assignments ?? []).length, 0)}
+                    </div>
+                    <div style={{fontSize:9,color:"rgba(107,114,128,1)",textTransform:"uppercase",letterSpacing:".1em",marginTop:2}}>Assignments</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category list */}
+              {(result.categories ?? []).length > 0 && (
+                <div style={{width:"100%",display:"flex",flexDirection:"column",gap:4}}>
+                  {(result.categories ?? []).map((cat: any, i: number) => {
+                    const col = COURSE_COLORS[i % COURSE_COLORS.length];
+                    return (
+                      <div key={cat.category_id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:10,background:`${col}08`,border:`1px solid ${col}18`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{width:3,height:16,borderRadius:2,background:col}}/>
+                          <span style={{fontSize:12,fontWeight:500,color:"white"}}>{cat.category_name}</span>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <span style={{fontSize:10,color:col,fontWeight:600}}>{cat.weight}%</span>
+                          <span style={{fontSize:9,color:"rgba(107,114,128,1)"}}>{(cat.assignments ?? []).length} assignments</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button onClick={() => onSuccess(result)}
+                style={{width:"100%",padding:"12px",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",background:"linear-gradient(135deg,#22c55e,#0891b2)",color:"white",border:"none",boxShadow:"0 0 20px rgba(34,197,94,.3)"}}>
+                Go to Dashboard →
+              </button>
+            </div>
+
+          ) : (
+            /* ── UPLOAD STATE ── */
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
               {/* Header */}
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-4">
-                  {/* Avatar */}
-                  <div className="relative w-14 h-14 flex items-center justify-center">
-                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-pink-500/30 via-purple-500/30 to-cyan-500/30 blur-md" />
-                    <span className="relative text-3xl animate-float-emoji"
-                      style={{ filter: "drop-shadow(0 0 10px rgba(168,85,247,0.8))" }}>
-                      {avatarEmoji}
-                    </span>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontSize:9,letterSpacing:".2em",textTransform:"uppercase",color:"rgba(167,139,250,.7)",marginBottom:6}}>New Course</div>
+                  <h2 style={{fontSize:21,fontWeight:800,color:"white",margin:0,letterSpacing:"-.02em"}}>Upload Your Syllabus</h2>
+                  <p style={{fontSize:11,color:"rgba(107,114,128,1)",marginTop:4,lineHeight:1.5}}>
+                    We'll automatically extract the course name, instructor, grading categories, weights, and every assignment.
+                  </p>
+                </div>
+                <button onClick={onClose} disabled={uploading}
+                  style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(156,163,175,1)",fontSize:14,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              </div>
+
+              {/* Drop zone */}
+              <div
+                onClick={() => !uploading && fileRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); if (!uploading) setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={e => { e.preventDefault(); setDragging(false); const f=e.dataTransfer.files[0]; if(f&&!uploading) handleFile(f); }}
+                style={{
+                  border:`2px dashed ${uploading?"rgba(255,255,255,.06)":dragging?"rgba(167,139,250,.7)":file?"rgba(56,189,248,.5)":"rgba(255,255,255,.14)"}`,
+                  borderRadius:18,padding:"36px 20px",textAlign:"center",
+                  cursor:uploading?"not-allowed":"pointer",
+                  background:uploading?"rgba(255,255,255,.01)":dragging?"rgba(124,58,237,.08)":file?"rgba(56,189,248,.04)":"rgba(255,255,255,.02)",
+                  transition:"all .2s",
+                }}>
+                <input ref={fileRef} type="file" accept=".pdf" style={{display:"none"}}
+                  onChange={e => { const f=e.target.files?.[0]; if(f) handleFile(f); }}/>
+
+                {uploading ? (
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+                    <div style={{width:36,height:36,border:"3px solid rgba(124,58,237,.3)",borderTopColor:"#c084fc",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:"white",marginBottom:3}}>Parsing your syllabus…</div>
+                      <div style={{fontSize:11,color:"rgba(107,114,128,1)"}}>This may take 10–20 seconds</div>
+                    </div>
                   </div>
+                ) : file ? (
                   <div>
-                    <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 animate-glow-text">
-                      {username ? `Hey, @${username} 👋` : "Dashboard"}
-                    </h1>
-                    <p className="text-gray-400 text-xs mt-0.5">Welcome back to IntelliGPA</p>
+                    <div style={{fontSize:32,marginBottom:8}}>📄</div>
+                    <div style={{fontSize:13,fontWeight:600,color:"white",marginBottom:3}}>{file.name}</div>
+                    <div style={{fontSize:11,color:"rgba(107,114,128,1)",marginBottom:8}}>{(file.size/1024).toFixed(0)} KB · PDF</div>
+                    <button onClick={e => { e.stopPropagation(); setFile(null); setError(""); }}
+                      style={{fontSize:11,color:"rgba(252,165,165,1)",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
+                      Remove file
+                    </button>
                   </div>
-                </div>
-                <button onClick={handleLogout}
-                  className="text-xs text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-400/30 px-3 py-1.5 rounded-lg transition-all duration-200">
-                  Log Out
-                </button>
+                ) : (
+                  <div>
+                    <div style={{fontSize:36,marginBottom:10}}>☁️</div>
+                    <div style={{fontSize:13,fontWeight:600,color:"white",marginBottom:3}}>Drop your syllabus PDF here</div>
+                    <div style={{fontSize:11,color:"rgba(107,114,128,1)"}}>or click to browse</div>
+                  </div>
+                )}
               </div>
 
-              {/* GPA Cards */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Current GPA</p>
-                  <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">
-                    {currentGpa ? parseFloat(currentGpa).toFixed(1) : "—"}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">out of 4.0</p>
-                </div>
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Goal GPA</p>
-                  <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
-                    {goalGpa ? parseFloat(goalGpa).toFixed(1) : "—"}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">your target</p>
-                </div>
-              </div>
-
-              {/* Progress bar toward goal */}
-              {goalGpa && (
-                <div className="mb-6">
-                  <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                    <span>Progress toward goal</span>
-                    <span>{Math.round(gpaProgress)}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 transition-all duration-700"
-                      style={{ width: `${gpaProgress}%`, boxShadow: "0 0 8px rgba(168,85,247,0.6)" }} />
+              {/* What gets extracted info box */}
+              {!file && !uploading && (
+                <div style={{padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
+                  <div style={{fontSize:10,fontWeight:600,color:"white",marginBottom:7}}>Automatically extracted from your PDF</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+                    {[
+                      "Course name & instructor",
+                      "Assignment categories",
+                      "Grading weights (%)",
+                      "All assignments & due dates",
+                    ].map(t => (
+                      <div key={t} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(156,163,175,1)"}}>
+                        <span style={{color:"#4ade80",fontSize:9}}>✓</span>{t}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {/* Quick actions */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Add Course", icon: "📚", href: "/courses" },
-                  { label: "GPA Predictor", icon: "🔮", href: "/gpa-predictor" },
-                  { label: "Calendar", icon: "📅", href: "/calendar" },
-                  { label: "My Profile", icon: "👤", href: "/profile" },
-                ].map(item => (
-                  <button key={item.label} onClick={() => router.push(item.href)}
-                    className="flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-400/30 rounded-2xl p-4 text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] group">
-                    <span className="text-2xl group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
-                    <span className="text-sm font-medium text-gray-200">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-gray-200 text-center">Loading...</p>
+              {/* Error */}
+              {error && (
+                <div style={{padding:"9px 13px",borderRadius:9,background:"rgba(248,113,113,.08)",border:"1px solid rgba(248,113,113,.22)",fontSize:11,color:"#f87171"}}>
+                  ✗ {error}
+                </div>
+              )}
+
+              {/* Upload button */}
+              <button onClick={handleUpload} disabled={!file || uploading}
+                style={{
+                  padding:"13px",borderRadius:12,fontSize:13,fontWeight:700,
+                  cursor:!file||uploading?"not-allowed":"pointer",
+                  background:"linear-gradient(135deg,#7c3aed,#0891b2)",
+                  color:"white",border:"none",
+                  opacity:!file||uploading?.5:1,
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                  transition:"opacity .15s",
+                }}>
+                {uploading ? (
+                  <><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"white",borderRadius:"50%",display:"inline-block",animation:"spin .8s linear infinite"}}/>Parsing & saving…</>
+                ) : "Upload & Parse Syllabus →"}
+              </button>
+
+              <p style={{textAlign:"center",fontSize:10,color:"rgba(75,85,99,1)",margin:0}}>
+                PDF only · Max recommended 10MB · Scanned PDFs may not parse correctly
+              </p>
+            </div>
           )}
         </div>
       </div>
 
-      <style jsx>{`
-        @keyframes glowText { 0%,100% { text-shadow: 0 0 20px #fff,0 0 40px #ff00ff,0 0 60px #00ffff; } 50% { text-shadow: 0 0 40px #fff,0 0 60px #ff00ff,0 0 80px #00ffff; } }
-        @keyframes bounceSlow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-        @keyframes floatCard { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-8px) rotate(0.5deg); } }
-        @keyframes floatEmoji { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+      <style jsx>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
 
-        .animate-glow-text { animation: glowText 2s ease-in-out infinite; }
-        .animate-bounce-slow { animation: bounceSlow 6s ease-in-out infinite; }
-        .animate-float-card { animation: floatCard 6s ease-in-out infinite; }
-        .animate-float-emoji { animation: floatEmoji 2s ease-in-out infinite; }
+// ── Main Dashboard ────────────────────────────────────────────────────────────
+export default function DashboardPage() {
+  const [user,     setUser]      = useState<User|null>(null);
+  const [mounted,  setMounted]   = useState(false);
+  const [username, setUsername]  = useState("");
+  const [currentGpa, setCurrentGpa] = useState<string|null>(null);
+  const [goalGpa,  setGoalGpa]   = useState<string|null>(null);
+  const [courses,  setCourses]   = useState<any[]>([]);
+  const [showModal,setShowModal] = useState(false);
+  const router   = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    const u = localStorage.getItem("student_user_name") ?? "";
+    setUsername(u);
+    setCurrentGpa(localStorage.getItem("current_gpa"));
+    setGoalGpa(localStorage.getItem("goal_gpa"));
+    if (u) {
+      fetch(`http://localhost:8000/course/course/${u}`)
+        .then(r => r.json())
+        .then(d => setCourses(Array.isArray(d) ? d : []))
+        .catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, u => {
+      if (!u) router.push("/login"); else setUser(u);
+    });
+    return () => unsub();
+  }, [router]);
+
+  const handleLogout = async () => {
+    await signOut(auth); localStorage.clear(); router.push("/login");
+  };
+
+  if (!mounted) return null;
+
+  const gpa        = parseFloat(currentGpa ?? "0");
+  const goal       = parseFloat(goalGpa ?? "4");
+  const prog       = goalGpa ? Math.min((gpa / goal) * 100, 100) : 0;
+  const onTrack    = !!currentGpa && gpa >= goal;
+  const grade      = currentGpa ? getGrade(gpa) : null;
+  const gradeColor = grade ? (GRADE_COLORS[grade] ?? "#6b7280") : "#6b7280";
+  const avatar     = username ? AVATARS[username.charCodeAt(0) % AVATARS.length] : "🎓";
+  const totalCr    = courses.reduce((s, c) => s + (c.credits ?? 3), 0);
+  const totalA     = courses.reduce((s, c) => s + (c.categories ?? []).reduce((ss: number, cat: any) => ss + (cat.assignments ?? []).length, 0), 0);
+
+  return (
+    <div style={{minHeight:"100vh",background:"#07060f",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",color:"white",position:"relative"}}>
+      <ParticleCanvas />
+
+      {/* NAV */}
+      <nav style={{position:"sticky",top:0,zIndex:50,backdropFilter:"blur(24px)",background:"rgba(7,6,15,.85)",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+        <div style={{maxWidth:1320,margin:"0 auto",padding:"0 40px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span onClick={() => router.push("/dashboard")} style={{fontWeight:800,fontSize:19,background:"linear-gradient(135deg,#f472b6,#a78bfa,#38bdf8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",cursor:"pointer",letterSpacing:"-.02em"}}>
+            IntelliGPA
+          </span>
+          <div style={{display:"flex",gap:28,alignItems:"center"}}>
+            {NAVLINKS.map(({ label, href }) => {
+              const active = pathname === href;
+              return (
+                <button key={href} onClick={() => router.push(href)}
+                  style={{fontSize:13,fontWeight:active?600:400,color:active?"white":"rgba(107,114,128,1)",background:"none",border:"none",cursor:"pointer",position:"relative",paddingBottom:3,transition:"color .15s"}}>
+                  {label}
+                  {active && <span style={{position:"absolute",bottom:0,left:0,right:0,height:1.5,borderRadius:1,background:"linear-gradient(90deg,#f472b6,#a78bfa)"}}/>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </nav>
+
+      <div style={{maxWidth:1320,margin:"0 auto",padding:"40px 40px 80px",position:"relative",zIndex:1}}>
+
+        {/* ── HERO ── */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:20}}>
+          <div style={{flex:1}}>
+            {/* Greeting */}
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+              <div style={{position:"relative"}}>
+                <div style={{width:54,height:54,borderRadius:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,
+                  background:`linear-gradient(135deg,${gradeColor}20,rgba(255,255,255,.05))`,
+                  border:`1px solid ${gradeColor}26`,boxShadow:`0 0 20px ${gradeColor}12`}}>
+                  {avatar}
+                </div>
+                <div style={{position:"absolute",bottom:-2,right:-2,width:13,height:13,borderRadius:7,background:"#22c55e",border:"2.5px solid #07060f",boxShadow:"0 0 5px #22c55e"}}/>
+              </div>
+              <div>
+                <h1 style={{fontSize:26,fontWeight:900,margin:0,letterSpacing:"-.03em",lineHeight:1}}>
+                  <span style={{color:"rgba(156,163,175,1)",fontWeight:400}}>Hey, </span>
+                  <span style={{background:"linear-gradient(135deg,#f9a8d4,#c084fc,#67e8f9)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+                    @{username || "student"}
+                  </span>
+                  <span> 👋</span>
+                </h1>
+                <p style={{fontSize:12,color:"rgba(107,114,128,1)",margin:"3px 0 0"}}>
+                  {onTrack
+                    ? "You've hit your goal — keep pushing!"
+                    : currentGpa
+                    ? `${(goal - gpa).toFixed(2)} GPA points to reach your ${goal.toFixed(1)} goal`
+                    : "Add your first course to get started"}
+                </p>
+              </div>
+            </div>
+
+            {/* Stat pills */}
+            <div style={{display:"flex",gap:7,marginBottom:7}}>
+              {[
+                { l:"Current GPA",  v: currentGpa ? gpa.toFixed(2) : "—", c: gradeColor,  sub: grade ?? "No grades" },
+                { l:"Goal GPA",     v: goal.toFixed(1),                    c: "#38bdf8",   sub: `${prog.toFixed(0)}% there` },
+                { l:"Courses",      v: String(courses.length),             c: "#818cf8",   sub: `${totalCr} credits` },
+                { l:"Assignments",  v: String(totalA),                     c: "#4ade80",   sub: "tracked" },
+              ].map(m => (
+                <div key={m.l} style={{flex:1,padding:"13px 14px",borderRadius:14,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${m.c},transparent)`}}/>
+                  <div style={{fontSize:8,color:"rgba(75,85,99,1)",letterSpacing:".12em",textTransform:"uppercase",marginBottom:4}}>{m.l}</div>
+                  <div style={{fontSize:22,fontWeight:900,color:m.c,lineHeight:1,fontVariantNumeric:"tabular-nums",textShadow:`0 0 14px ${m.c}28`}}>{m.v}</div>
+                  <div style={{fontSize:9,color:"rgba(107,114,128,1)",marginTop:3}}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Progress bar */}
+            {goalGpa && (
+              <div style={{padding:"11px 14px",borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.06)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+                  <span style={{fontSize:8,color:"rgba(75,85,99,1)",letterSpacing:".14em",textTransform:"uppercase"}}>Progress toward {goal.toFixed(1)}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:"white"}}>{prog.toFixed(1)}%</span>
+                </div>
+                <div style={{height:5,borderRadius:5,background:"rgba(255,255,255,.05)",overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:5,width:`${prog}%`,
+                    background:`linear-gradient(90deg,${gradeColor},#7c3aed,#0891b2)`,
+                    boxShadow:`0 0 10px ${gradeColor}45`,transition:"width 1s cubic-bezier(.4,0,.2,1)"}}/>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sign out */}
+          <button onClick={handleLogout}
+            style={{padding:"8px 16px",borderRadius:10,fontSize:12,fontWeight:500,cursor:"pointer",color:"rgba(252,165,165,1)",background:"rgba(239,68,68,.07)",border:"1px solid rgba(239,68,68,.16)",whiteSpace:"nowrap",transition:"all .15s",flexShrink:0}}
+            onMouseEnter={e => e.currentTarget.style.background="rgba(239,68,68,.14)"}
+            onMouseLeave={e => e.currentTarget.style.background="rgba(239,68,68,.07)"}>
+            Sign Out
+          </button>
+        </div>
+
+        {/* ── MAIN GRID ── */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:8}}>
+
+          {/* Courses panel */}
+          <div style={{borderRadius:22,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",overflow:"hidden"}}>
+            <div style={{padding:"16px 22px",borderBottom:"1px solid rgba(255,255,255,.05)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"white"}}>My Courses</div>
+                <div style={{fontSize:10,color:"rgba(107,114,128,1)",marginTop:1}}>{courses.length} enrolled · {totalCr} total credits</div>
+              </div>
+              <button onClick={() => setShowModal(true)}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
+                  background:"linear-gradient(135deg,#7c3aed,#0891b2)",color:"white",border:"none",
+                  boxShadow:"0 0 16px rgba(124,58,237,.3)",transition:"box-shadow .15s"}}
+                onMouseEnter={e => e.currentTarget.style.boxShadow="0 0 28px rgba(124,58,237,.55)"}
+                onMouseLeave={e => e.currentTarget.style.boxShadow="0 0 16px rgba(124,58,237,.3)"}>
+                <span style={{fontSize:15,lineHeight:1}}>+</span> Add Course
+              </button>
+            </div>
+
+            {courses.length === 0 ? (
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"56px 24px",gap:14,textAlign:"center"}}>
+                <div style={{fontSize:44,opacity:.12}}>📚</div>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700,color:"white",marginBottom:5}}>No courses yet</div>
+                  <div style={{fontSize:12,color:"rgba(107,114,128,1)",lineHeight:1.65,maxWidth:300}}>
+                    Click <b style={{color:"white"}}>"+ Add Course"</b> and upload your syllabus PDF.<br/>
+                    We'll automatically extract everything — course name, grading categories, weights, and every assignment.
+                  </div>
+                </div>
+                <button onClick={() => setShowModal(true)}
+                  style={{padding:"10px 22px",borderRadius:11,fontSize:12,fontWeight:700,cursor:"pointer",background:"linear-gradient(135deg,#7c3aed,#0891b2)",color:"white",border:"none",boxShadow:"0 0 20px rgba(124,58,237,.35)",marginTop:4}}>
+                  + Add Your First Course
+                </button>
+              </div>
+            ) : (
+              <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:5}}>
+                {courses.map((c: any, i: number) => {
+                  const col = COURSE_COLORS[i % COURSE_COLORS.length];
+                  const graded = (c.categories ?? []).reduce((s: number, cat: any) => s + (cat.assignments ?? []).filter((a: any) => a.score != null).length, 0);
+                  const total  = (c.categories ?? []).reduce((s: number, cat: any) => s + (cat.assignments ?? []).length, 0);
+                  const pct    = total > 0 ? (graded / total) * 100 : 0;
+                  return (
+                    <div key={c.course_id}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",borderRadius:14,background:`${col}06`,border:`1px solid ${col}15`,cursor:"pointer",transition:"all .15s"}}
+                      onClick={() => router.push("/gpa-predictor")}
+                      onMouseEnter={e => (e.currentTarget.style.background = `${col}0d`)}
+                      onMouseLeave={e => (e.currentTarget.style.background = `${col}06`)}>
+                      <div style={{width:3,alignSelf:"stretch",borderRadius:2,background:col,flexShrink:0,boxShadow:`0 0 8px ${col}`}}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"white",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.course_name}</div>
+                        <div style={{display:"flex",gap:5,alignItems:"center",marginTop:3}}>
+                          {c.instructor && <span style={{fontSize:9,color:"rgba(107,114,128,1)"}}>{c.instructor}</span>}
+                          <span style={{fontSize:9,fontWeight:700,color:col,background:`${col}14`,padding:"1px 6px",borderRadius:4}}>{c.credits ?? 3} cr</span>
+                          <span style={{fontSize:9,color:"rgba(75,85,99,1)"}}>{graded}/{total} graded</span>
+                        </div>
+                        <div style={{marginTop:7,height:2.5,borderRadius:2,background:"rgba(255,255,255,.07)",overflow:"hidden"}}>
+                          <div style={{height:"100%",borderRadius:2,background:col,width:`${pct}%`,transition:"width .6s",boxShadow:`0 0 4px ${col}`}}/>
+                        </div>
+                      </div>
+                      <span style={{fontSize:16,color:"rgba(75,85,99,1)"}}>›</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Right sidebar */}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {/* Upload CTA */}
+            <button onClick={() => setShowModal(true)}
+              style={{padding:"20px",borderRadius:20,cursor:"pointer",textAlign:"left",border:"none",
+                background:"linear-gradient(135deg,rgba(124,58,237,.2),rgba(8,145,178,.12))",
+                outline:"1px solid rgba(124,58,237,.28)",
+                boxShadow:"0 0 24px rgba(124,58,237,.08)",transition:"all .2s"}}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow="0 0 36px rgba(124,58,237,.22)"; e.currentTarget.style.outlineColor="rgba(124,58,237,.5)"; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow="0 0 24px rgba(124,58,237,.08)"; e.currentTarget.style.outlineColor="rgba(124,58,237,.28)"; }}>
+              <div style={{fontSize:26,marginBottom:7}}>📄</div>
+              <div style={{fontSize:13,fontWeight:700,color:"white",marginBottom:4}}>Add Course</div>
+              <div style={{fontSize:11,color:"rgba(156,163,175,1)",lineHeight:1.55}}>
+                Upload a syllabus PDF — we auto-extract assignments, categories, weights and due dates.
+              </div>
+              <div style={{marginTop:10,fontSize:11,fontWeight:600,color:"#a78bfa",display:"flex",alignItems:"center",gap:3}}>
+                Upload Syllabus <span>→</span>
+              </div>
+            </button>
+
+            {/* Quick nav */}
+            {[
+              { label:"GPA Predictor", icon:"🔮", href:"/gpa-predictor", color:"#818cf8" },
+              { label:"Calendar",      icon:"📅", href:"/calendar",      color:"#38bdf8" },
+              { label:"My Profile",    icon:"👤", href:"/profile",       color:"#f472b6" },
+            ].map(a => (
+              <button key={a.href} onClick={() => router.push(a.href)}
+                style={{display:"flex",alignItems:"center",gap:11,padding:"13px 14px",borderRadius:14,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",cursor:"pointer",textAlign:"left",transition:"all .15s"}}
+                onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,.05)"; e.currentTarget.style.borderColor=`${a.color}28`; }}
+                onMouseLeave={e => { e.currentTarget.style.background="rgba(255,255,255,.025)"; e.currentTarget.style.borderColor="rgba(255,255,255,.07)"; }}>
+                <div style={{width:34,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,background:`${a.color}14`,border:`1px solid ${a.color}22`}}>{a.icon}</div>
+                <span style={{fontSize:12,fontWeight:600,color:"white",flex:1}}>{a.label}</span>
+                <span style={{color:"rgba(75,85,99,1)",fontSize:15}}>›</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <AddCourseModal
+          username={username}
+          onClose={() => setShowModal(false)}
+          onSuccess={newCourse => {
+            setCourses(prev => [...prev, newCourse]);
+            setShowModal(false);
+          }}
+        />
+      )}
+
+      <style jsx>{`
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
-    </main>
+    </div>
   );
 }

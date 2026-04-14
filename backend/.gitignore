@@ -34,4 +34,4 @@ dist/
 .pytest_cache/
 
 # Jupyter notebooks checkpoints
-.ipynb_checkpoints/
+.ipynb_checkpoints/.env
