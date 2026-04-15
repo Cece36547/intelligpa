@@ -59,7 +59,7 @@ export default function DashboardPage() {
     let height = (canvas.height = window.innerHeight);
     const particles: { x: number; y: number; r: number; dx: number; dy: number }[] = [];
 
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 35; i++) {
       particles.push({
         x: Math.random() * width, y: Math.random() * height,
         r: Math.random() * 3 + 1,
