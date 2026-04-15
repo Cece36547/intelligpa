@@ -1,8 +1,8 @@
 #!/bin/bash
 # Start backend
-cd /Users/Annichka/Capstone/intelligpa/backend
+cd "$(dirname "$0")/backend"
 python3 -m uvicorn app.main:app --reload &
 
 # Start frontend
-cd /Users/Annichka/Capstone/intelligpa/frontend
+cd "$(dirname "$0")/frontend"
 npm run dev
