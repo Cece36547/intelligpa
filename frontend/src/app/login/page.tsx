@@ -45,24 +45,22 @@ export default function LoginPage() {
 
   // After any successful sign-in, fetch the student profile from backend
   const loadProfile = async (userEmail: string) => {
-    try {
-      const res = await fetch(
-        `http://localhost:8000/student/${encodeURIComponent(userEmail)}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.student_user_name)
-          localStorage.setItem("student_user_name", data.student_user_name);
-        if (data.current_gpa != null)
-          localStorage.setItem("current_gpa", String(data.current_gpa));
-        if (data.goal_gpa != null)
-          localStorage.setItem("goal_gpa", String(data.goal_gpa));
-      }
-    } catch {
-      console.warn("Could not fetch profile from backend.");
+  try {
+    // Use username from localStorage (set during signup)
+    const username = localStorage.getItem("student_user_name");
+    if (!username) return;
+    const res = await fetch(`http://localhost:8000/student/${username}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.current_gpa != null)
+        localStorage.setItem("current_gpa", String(data.current_gpa));
+      if (data.goal_gpa != null)
+        localStorage.setItem("goal_gpa", String(data.goal_gpa));
     }
-  };
-
+  } catch {
+    console.warn("Could not fetch profile from backend.");
+  }
+};
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
