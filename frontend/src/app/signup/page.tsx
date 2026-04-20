@@ -136,11 +136,8 @@ export default function SignUpPage() {
       if (currentGpa !== null) localStorage.setItem("current_gpa", String(currentGpa));
       if (goalGpa !== null) localStorage.setItem("goal_gpa", String(goalGpa));
 
-<<<<<<< HEAD
-=======
       const firebaseUser = auth.currentUser // get current firebase user
       // Try to save to backend — but don't block on failure
->>>>>>> feature/gpa-engine
       try {
         const res = await fetch("http://localhost:8000/student/", {
           method: "POST",
