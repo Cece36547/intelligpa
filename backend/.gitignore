@@ -35,3 +35,6 @@ dist/
 
 # Jupyter notebooks checkpoints
 .ipynb_checkpoints/
+
+# Firebase keys
+.firebase_service_account.json
