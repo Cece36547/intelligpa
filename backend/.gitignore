@@ -15,7 +15,7 @@ env/
 # Mac files
 .DS_Store
 
-# Environment variables (VERY IMPORTANT)
+# Environment variables 
 .env
 
 # Database files 
@@ -38,5 +38,6 @@ dist/
 
 # Firebase keys
 .firebase_service_account.json
+app/firebase_service_account.json
 
 .ipynb_checkpoints/.env

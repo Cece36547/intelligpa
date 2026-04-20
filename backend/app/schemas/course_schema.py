@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from app.schemas.assignment_schema import assignmentResponse
+from app.schemas.assignmentCategory_schema import responseAssignmentCategory
 from typing import Optional
 
 class createCourse(BaseModel):
@@ -11,8 +12,8 @@ class courseResponse(BaseModel):
     course_name: str
     instructor:Optional[str] = None
     course_id: int
-    assignment: Optional[list[assignmentResponse]] = None
-    categories: Optional[list[assignmentResponse]] = None
+    assignments: Optional[list[assignmentResponse]] = None
+    categories: Optional[list[responseAssignmentCategory]] = None
 
 
     
