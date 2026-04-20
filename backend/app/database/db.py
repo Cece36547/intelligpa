@@ -1,21 +1,26 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
-from app.database.base import Base
 from dotenv import load_dotenv
+from app.database.base import Base
 
-#Configurating Database
+# Import all models so SQLAlchemy knows about them before create_all
+from app.models.student import Student
+from app.models.course import Course
+from app.models.assignment import Assignment
+from app.models.assignmentCategory import AssignmentCategory
+
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-#Create engine
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
 Base.metadata.create_all(engine)
 
 def get_db():
-    db = Session() #creates a new database sessions
+    db = Session()
     try:
-        yield db #passes the session to your route function
+        yield db
     finally:
-        db.close() # closes session after the route finished
+        db.close()

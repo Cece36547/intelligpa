@@ -38,3 +38,5 @@ dist/
 
 # Firebase keys
 .firebase_service_account.json
+
+.ipynb_checkpoints/.env
