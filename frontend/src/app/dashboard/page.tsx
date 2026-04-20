@@ -29,92 +29,41 @@ function getGrade(gpa: number) {
 // ── Memoized particle canvas — never re-renders on state change ───────────────
 const ParticleCanvas = memo(function ParticleCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
-
   useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let w = (canvas.width = window.innerWidth);
-    let h = (canvas.height = window.innerHeight);
-
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    let w = canvas.width  = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
     const pts = Array.from({ length: 80 }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      r: Math.random() * 2 + 0.5,
-      dx: (Math.random() - 0.5) * 0.8,
-      dy: (Math.random() - 0.5) * 0.8,
+      x: Math.random()*w, y: Math.random()*h,
+      r: Math.random()*2+.5, dx:(Math.random()-.5)*.8, dy:(Math.random()-.5)*.8,
     }));
-
     let raf: number;
-
     function draw() {
-      ctx.fillStyle = "rgba(7,6,15,0.25)";
-      ctx.fillRect(0, 0, w, h);
-
-      for (let i = 0; i < pts.length; i++) {
-        const p = pts[i];
-        p.x += p.dx;
-        p.y += p.dy;
-
-        if (p.x > w || p.x < 0) p.dx *= -1;
-        if (p.y > h || p.y < 0) p.dy *= -1;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.3)";
-        ctx.fill();
-
-        for (let j = i + 1; j < pts.length; j++) {
-          const q = pts[j];
-          const dx = p.x - q.x;
-          const dy = p.y - q.y;
-          const d2 = dx * dx + dy * dy;
-
-          if (d2 < 14000) {
+      if (!ctx) return;
+      ctx.fillStyle = "rgba(7,6,15,0.25)"; ctx.fillRect(0,0,w,h);
+      for (let i=0; i<pts.length; i++) {
+        const p = pts[i]; p.x+=p.dx; p.y+=p.dy;
+        if (p.x>w||p.x<0) p.dx*=-1; if (p.y>h||p.y<0) p.dy*=-1;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.fill();
+        for (let j=i+1; j<pts.length; j++) {
+          const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d2=dx*dx+dy*dy;
+          if (d2<14000) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(120,160,255,${0.14 * (1 - d2 / 14000)})`;
-            ctx.lineWidth = 0.5;
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(q.x, q.y);
-            ctx.stroke();
+            ctx.strokeStyle=`rgba(120,160,255,${.14*(1-d2/14000)})`;
+            ctx.lineWidth=.5; ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke();
           }
         }
       }
-
       raf = requestAnimationFrame(draw);
     }
-
     draw();
-
-    const resize = () => {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    };
-
+    const resize = () => { w=canvas.width=window.innerWidth; h=canvas.height=window.innerHeight; };
     window.addEventListener("resize", resize);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
-    };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
   }, []);
-
-  return (
-    <canvas
-      ref={ref}
-      style={{
-        position: "fixed",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 0,
-      }}
-    />
-  );
+  return <canvas ref={ref} style={{position:"fixed",inset:0,width:"100%",height:"100%",pointerEvents:"none",zIndex:0}}/>;
 });
 
 // ── Add Course Modal ──────────────────────────────────────────────────────────
@@ -391,12 +340,37 @@ export default function DashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, u => {
-      if (!u) router.push("/login"); else setUser(u);
-    });
-    return () => unsub();
-  }, [router]);
+ useEffect(() => {
+  const unsub = onAuthStateChanged(auth, async (u) => {
+    if (!u) {
+      router.push("/login");
+      return;
+    }
+    setUser(u);
+    // Restore username from Firebase display name if localStorage is empty
+    if (u.displayName && !localStorage.getItem("student_user_name")) {
+      localStorage.setItem("student_user_name", u.displayName);
+      setUsername(u.displayName);
+      try {
+        const res = await fetch(`http://localhost:8000/student/${u.displayName}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.current_gpa != null) { localStorage.setItem("current_gpa", String(data.current_gpa)); setCurrentGpa(String(data.current_gpa)); }
+          if (data.goal_gpa != null) { localStorage.setItem("goal_gpa", String(data.goal_gpa)); setGoalGpa(String(data.goal_gpa)); }
+        }
+      } catch {}
+    }
+    // Save to Firebase if we have username locally but not in Firebase
+    if (!u.displayName) {
+      const stored = localStorage.getItem("student_user_name");
+      if (stored) {
+        const { updateProfile } = await import("firebase/auth");
+        await updateProfile(u, { displayName: stored }).catch(() => {});
+      }
+    }
+  });
+  return () => unsub();
+}, [router]);
 
   const handleLogout = async () => {
     await signOut(auth); localStorage.clear(); router.push("/login");
