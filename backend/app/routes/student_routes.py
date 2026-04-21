@@ -45,3 +45,15 @@ def deleteStudent(user=Depends(verify_firebase_token) , db: Session = Depends(ge
     db.delete(student)
     db.commit()
     return {"message": f"Student deleted successfully"}
+
+@router.put("/{student_user_name}/firebase", response_model=StudentResponse)
+def linkFirebaseUid(student_user_name: str, firebase_uid: str, email: str = None, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    student.firebase_uid = firebase_uid
+    if email:
+        student.email = email
+    db.commit()
+    db.refresh(student)
+    return student
