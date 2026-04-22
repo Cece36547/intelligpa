@@ -89,29 +89,41 @@ export default function Page(){
   const [username,setUsername]=useState("");
 
   useEffect(()=>{
-    setMounted(true);
-    const g=localStorage.getItem("goal_gpa"),u=localStorage.getItem("student_user_name")??"";
-    if(g)setGoal(parseFloat(g)); setUsername(u);
-    if(!u){setLoading(false);return;}
-    fetch(`http://localhost:8000/course/course/${u}`)
-      .then(r=>r.json()).then((data:any[])=>{
-        setCourses(data.map((c,i)=>({course_id:c.course_id,course_name:c.course_name,instructor:c.instructor??"",credits:c.credits??3,color:COLORS[i%COLORS.length],
-          categories:(c.categories??[]).map((cat:any)=>({category_id:cat.category_id,category_name:cat.category_name,weight:cat.weight??0,
-            assignments:(cat.assignments??[]).map((a:any)=>({assignment_id:a.assignment_id,title:a.title??"Untitled",score:a.score??null,max_score:a.max_score??100,hypothetical:null}))}))}))); setLoading(false);
-      }).catch(()=>setLoading(false));
-  },[]);
+  setMounted(true);
+  const g=localStorage.getItem("goal_gpa"),u=localStorage.getItem("student_user_name")??"";
+  if(g)setGoal(parseFloat(g)); setUsername(u);
+  
+  import("@/lib/firebase").then(({auth})=>{
+    // Wait for Firebase auth to initialize
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      unsubscribe(); // Only run once
+      if(!user){setLoading(false);return;}
+      user.getIdToken().then(token=>{
+        fetch(`http://localhost:8000/course/`,{headers:{Authorization:`Bearer ${token}`}})
+          .then(r=>r.json()).then((data:any[])=>{
+            if(!Array.isArray(data)){setLoading(false);return;}
+            setCourses(data.map((c,i)=>({course_id:c.course_id,course_name:c.course_name,instructor:c.instructor??"",credits:c.credits??3,color:COLORS[i%COLORS.length],
+              categories:(c.categories??[]).map((cat:any)=>({category_id:cat.category_id,category_name:cat.category_name,weight:cat.weight??0,
+                assignments:(cat.assignments??[]).map((a:any)=>({assignment_id:a.assignment_id,title:a.title??"Untitled",score:a.score??null,max_score:a.max_score??100,hypothetical:null}))}))})));
+            setLoading(false);
+          }).catch(()=>setLoading(false));
+      });
+    });
+  });
+},[]);
 
-  if(!mounted)return null;
   const curGpa=useMemo(()=>calcGpa(courses,false),[courses]);
-  const projGpa=useMemo(()=>calcGpa(courses,true),[courses]);
-  const cG=useMemo(()=>Object.fromEntries(courses.map(c=>[c.course_id,cPct(c,false)])),[courses]);
-  const cGH=useMemo(()=>Object.fromEntries(courses.map(c=>[c.course_id,cPct(c,true)])),[courses]);
-  const selCourse=useMemo(()=>courses.find(c=>c.course_id===selC)??null,[courses,selC]);
-  const needed=useMemo(()=>selCourse?solve(selCourse,target):null,[selCourse,target]);
-  const diff=projGpa!=null&&curGpa!=null?projGpa-curGpa:null;
-  const onTrack=curGpa!=null&&curGpa>=goal;
-  const prog=curGpa!=null?Math.min((curGpa/goal)*100,100):0;
-  const curL=curGpa!=null?ltr((curGpa/4)*100):null;
+const projGpa=useMemo(()=>calcGpa(courses,true),[courses]);
+const cG=useMemo(()=>Object.fromEntries(courses.map(c=>[c.course_id,cPct(c,false)])),[courses]);
+const cGH=useMemo(()=>Object.fromEntries(courses.map(c=>[c.course_id,cPct(c,true)])),[courses]);
+const selCourse=useMemo(()=>courses.find(c=>c.course_id===selC)??null,[courses,selC]);
+const needed=useMemo(()=>selCourse?solve(selCourse,target):null,[selCourse,target]);
+const diff=projGpa!=null&&curGpa!=null?projGpa-curGpa:null;
+const onTrack=curGpa!=null&&curGpa>=goal;
+const prog=curGpa!=null?Math.min((curGpa/goal)*100,100):0;
+const curL=curGpa!=null?ltr((curGpa/4)*100):null;
+
+if(!mounted)return null;
 
   const upd=(cid:number,catId:number,aid:number,val:number|null)=>
     setCourses(p=>p.map(c=>c.course_id!==cid?c:{...c,categories:c.categories.map(cat=>cat.category_id!==catId?cat:{

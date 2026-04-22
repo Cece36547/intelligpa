@@ -74,17 +74,22 @@ function AddCourseModal({username,onClose,onSuccess}:{username:string;onClose:()
   const handleFile=(f:File)=>{if(f.type!=="application/pdf"){setError("Only PDF files are accepted.");return;}setFile(f);setError("");};
 
   const handleUpload=async()=>{
-    if(!file||!username)return;
-    setUploading(true);setError("");
-    const fd=new FormData();fd.append("file",file);
-    try{
-      const res=await fetch(`http://localhost:8000/course/course/${username}`,{method:"POST",body:fd});
-      if(res.status===409){setError("This course already exists.");return;}
-      if(!res.ok){const d=await res.json().then(d=>d.detail).catch(()=>res.statusText);throw new Error(typeof d==="string"?d:JSON.stringify(d));}
-      const course=await res.json();setResult(course);setDone(true);
-    }catch(e:any){setError(e.message||"Something went wrong.");}
-    finally{setUploading(false);}
-  };
+  if(!file)return;
+  setUploading(true);setError("");
+  const fd=new FormData();fd.append("file",file);
+  try{
+    const token = await auth.currentUser?.getIdToken();
+    const res=await fetch(`http://localhost:8000/course/`,{
+      method:"POST",
+      body:fd,
+      headers:{ Authorization: `Bearer ${token}` }
+    });
+    if(res.status===409){setError("This course already exists.");return;}
+    if(!res.ok){const d=await res.json().then(d=>d.detail).catch(()=>res.statusText);throw new Error(typeof d==="string"?d:JSON.stringify(d));}
+    const course=await res.json();setResult(course);setDone(true);
+  }catch(e:any){setError(e.message||"Something went wrong.");}
+  finally{setUploading(false);}
+};
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -262,16 +267,44 @@ export default function DashboardPage() {
 
   useEffect(()=>setMounted(true),[]);
 
-  useEffect(()=>{
-    const u=localStorage.getItem("student_user_name")??"";
-    setUsername(u); setCurrentGpa(localStorage.getItem("current_gpa")); setGoalGpa(localStorage.getItem("goal_gpa"));
-    if(u) fetch(`http://localhost:8000/course/course/${u}`).then(r=>r.json()).then(d=>setCourses(Array.isArray(d)?d:[])).catch(()=>{});
-  },[]);
+useEffect(()=>{
+  const unsub=onAuthStateChanged(auth, async (u)=>{
+    if(!u){ router.push("/login"); return; }
+    setUser(u);
+    
+    const username = localStorage.getItem("student_user_name");
+    
+    // Auto-link firebase_uid to student record
+    if(username && u.uid) {
+      fetch(`http://localhost:8000/student/${username}/firebase?firebase_uid=${u.uid}&email=${encodeURIComponent(u.email ?? "")}`, {
+        method: "PUT"
+      }).catch(() => {});
+    }
+    
+    const token = await u.getIdToken();
+    
+    // Fetch student profile (GPA etc)
+    fetch(`http://localhost:8000/student/`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if(data.current_gpa != null) { localStorage.setItem("current_gpa", String(data.current_gpa)); setCurrentGpa(String(data.current_gpa)); }
+      if(data.goal_gpa != null) { localStorage.setItem("goal_gpa", String(data.goal_gpa)); setGoalGpa(String(data.goal_gpa)); }
+      if(data.student_user_name) { localStorage.setItem("student_user_name", data.student_user_name); setUsername(data.student_user_name); }
+    })
+    .catch(() => {});
 
-  useEffect(()=>{
-    const unsub=onAuthStateChanged(auth,u=>{if(!u)router.push("/login");else setUser(u);});
-    return()=>unsub();
-  },[router]);
+    // Fetch courses
+    fetch(`http://localhost:8000/course/`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(r => r.json())
+    .then(d => setCourses(Array.isArray(d) ? d : []))
+    .catch(() => {});
+  });
+  return()=>unsub();
+},[router]);
 
   const handleLogout=async()=>{await signOut(auth);localStorage.clear();router.push("/login");};
 

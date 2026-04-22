@@ -26,7 +26,6 @@ export default function LoginPage() {
 
   useEffect(() => setMounted(true), []);
 
-  // Time-based greeting
   useEffect(() => {
     const h = new Date().getHours();
     if (h < 12) setGreeting("Good morning");
@@ -37,22 +36,20 @@ export default function LoginPage() {
   const cleanError = (msg: string) =>
     msg.replace("Firebase: ", "").replace(/\s*\(auth\/[^)]+\)\.?/, "").trim();
 
-  // Derive avatar from email prefix
   const avatarEmoji =
     email.length > 0
       ? AVATARS[email.charCodeAt(0) % AVATARS.length]
       : null;
 
-  // After any successful sign-in, fetch the student profile from backend
-  const loadProfile = async (userEmail: string) => {
+  // Fetch student profile using Firebase display name (username)
+  const loadProfile = async (displayName: string | null) => {
     try {
-      const res = await fetch(
-        `http://localhost:8000/student/${encodeURIComponent(userEmail)}`
-      );
+      const username = displayName || localStorage.getItem("student_user_name");
+      if (!username) return;
+      localStorage.setItem("student_user_name", username);
+      const res = await fetch(`http://localhost:8000/student/${username}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.student_user_name)
-          localStorage.setItem("student_user_name", data.student_user_name);
         if (data.current_gpa != null)
           localStorage.setItem("current_gpa", String(data.current_gpa));
         if (data.goal_gpa != null)
@@ -68,7 +65,6 @@ export default function LoginPage() {
     setMessage("");
     setLoading(true);
 
-    // If input looks like a username (no @), look up email first
     let loginEmail = email;
 
     if (!email.includes("@")) {
@@ -78,32 +74,26 @@ export default function LoginPage() {
         );
         if (res.ok) {
           const data = await res.json();
-
           if (data.student_user_name)
             localStorage.setItem("student_user_name", data.student_user_name);
           if (data.current_gpa != null)
             localStorage.setItem("current_gpa", String(data.current_gpa));
           if (data.goal_gpa != null)
             localStorage.setItem("goal_gpa", String(data.goal_gpa));
-
-          setMessage("Firebase requires your email to sign in. Enter your email.");
-          setLoading(false);
-          return;
+          setMessage("Now enter your email and password to sign in.");
         } else {
           setMessage("Username not found. Try email instead.");
-          setLoading(false);
-          return;
         }
       } catch {
         setMessage("Could not reach server. Please use email.");
-        setLoading(false);
-        return;
       }
+      setLoading(false);
+      return;
     }
 
     try {
       const cred = await signInWithEmailAndPassword(auth, loginEmail, password);
-      await loadProfile(cred.user.email ?? loginEmail);
+      await loadProfile(cred.user.displayName);
       router.push("/dashboard");
     } catch (error: any) {
       setMessage(cleanError(error.message));
@@ -112,7 +102,6 @@ export default function LoginPage() {
     }
   };
 
-  // GOOGLE (UNCHANGED)
   const handleGoogle = async () => {
     setMessage("");
     setLoading(true);
@@ -120,14 +109,13 @@ export default function LoginPage() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       const cred = await signInWithPopup(auth, provider);
-      await loadProfile(cred.user.email ?? "");
+      await loadProfile(cred.user.displayName);
       router.push("/dashboard");
     } finally {
       setLoading(false);
     }
   };
 
-  // MICROSOFT (UNCHANGED)
   const handleMicrosoft = async () => {
     setMessage("");
     setLoading(true);
@@ -135,14 +123,13 @@ export default function LoginPage() {
       const provider = new OAuthProvider("microsoft.com");
       provider.setCustomParameters({ tenant: "common", prompt: "select_account" });
       const cred = await signInWithPopup(auth, provider);
-      await loadProfile(cred.user.email ?? "");
+      await loadProfile(cred.user.displayName);
       router.push("/dashboard");
     } finally {
       setLoading(false);
     }
   };
 
-  // PARTICLES (UNCHANGED DESIGN)
   useEffect(() => {
     if (!mounted) return;
     const canvas = canvasRef.current;
@@ -163,48 +150,28 @@ export default function LoginPage() {
 
     function draw() {
       if (!ctx) return;
-
       ctx.fillStyle = "rgba(10,10,30,0.2)";
       ctx.fillRect(0, 0, width, height);
-
       pts.forEach((p, i) => {
-        p.x += p.dx;
-        p.y += p.dy;
-
+        p.x += p.dx; p.y += p.dy;
         if (p.x > width || p.x < 0) p.dx *= -1;
         if (p.y > height || p.y < 0) p.dy *= -1;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.4)";
-        ctx.fill();
-
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.fill();
         pts.slice(i + 1).forEach((q) => {
           const d = Math.hypot(p.x - q.x, p.y - q.y);
           if (d < 150) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(100,150,255,${
-              0.2 * (1 - d / 150)
-            })`;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "rgba(100,150,255,0.2)";
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(q.x, q.y);
-            ctx.stroke();
+            ctx.strokeStyle = `rgba(100,150,255,${0.2 * (1 - d / 150)})`;
+            ctx.shadowBlur = 10; ctx.shadowColor = "rgba(100,150,255,0.2)";
+            ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
           }
         });
       });
-
       requestAnimationFrame(draw);
     }
-
     draw();
-
-    const onResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-
+    const onResize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [mounted]);
@@ -218,7 +185,6 @@ export default function LoginPage() {
     <main className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-black via-purple-900 to-indigo-900 px-4">
       <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
 
-      {/* Floating shapes */}
       <div className="absolute w-12 h-12 rounded-full bg-pink-500/40 animate-bounce-slow top-16 left-10 shadow-[0_0_30px_rgba(255,192,203,0.5)]" />
       <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16 shadow-[0_0_40px_rgba(123,104,238,0.4)]" />
       <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28 shadow-[0_0_25px_rgba(0,255,255,0.5)]" />
@@ -251,12 +217,8 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email or username" />
           <input className={inputCls} type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white p-3 font-semibold shadow-lg"
-          >
+          <button type="submit" disabled={loading}
+            className="w-full rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white p-3 font-semibold shadow-lg">
             {loading ? "Signing in..." : "Sign In →"}
           </button>
         </form>
@@ -271,7 +233,6 @@ export default function LoginPage() {
           <button onClick={handleGoogle} className="w-full flex items-center justify-center gap-3 rounded-xl bg-white/8 border border-white/15 text-white p-3">
             Continue with Google
           </button>
-
           <button onClick={handleMicrosoft} className="w-full flex items-center justify-center gap-3 rounded-xl bg-white/8 border border-white/15 text-white p-3">
             Continue with Microsoft
           </button>
