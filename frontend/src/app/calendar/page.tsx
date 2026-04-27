@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
 export type AssignmentStatus = "not_started" | "in_progress" | "completed" | "not_submitted";
@@ -25,12 +25,8 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 const COURSE_COLORS = ["#818cf8","#38bdf8","#fb7185","#34d399","#fb923c","#a78bfa","#f472b6","#4ade80"];
 
 const TYPE_COLORS: Record<string, string> = {
-  homework: "#818cf8",
-  quiz:     "#38bdf8",
-  exam:     "#f87171",
-  project:  "#4ade80",
-  lab:      "#fb923c",
-  other:    "#a78bfa",
+  homework: "#818cf8", quiz: "#38bdf8", exam: "#f87171",
+  project: "#4ade80", lab: "#fb923c", other: "#a78bfa",
 };
 
 const PRIORITY_CONFIG: Record<AssignmentPriority, { label: string; color: string; dot: string }> = {
@@ -333,6 +329,9 @@ export default function CalendarPage() {
   const [addDefaultDate, setAddDefaultDate] = useState(toDateStr(today.getFullYear(), today.getMonth(), today.getDate()));
   const [filterType, setFilterType] = useState<string>("all");
   const [filterCourse, setFilterCourse] = useState<string>("all");
+  const [filterPriority, setFilterPriority] = useState<string>("all");
+  const [view, setView] = useState<"month"|"list">("month");
+  const [sortBy, setSortBy] = useState<"date"|"priority"|"course">("date");
 
   useEffect(() => {
     import("@/lib/firebase").then(({ auth }) => {
@@ -378,7 +377,6 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
 
   function guessType(title: string): Assignment["type"] {
     const t = title.toLowerCase();
@@ -395,17 +393,28 @@ export default function CalendarPage() {
 
   const prevMonth = () => month === 0 ? (setMonth(11), setYear(y => y - 1)) : setMonth(m => m - 1);
   const nextMonth = () => month === 11 ? (setMonth(0), setYear(y => y + 1)) : setMonth(m => m + 1);
+  const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); };
+
+  const priorityOrder: Record<AssignmentPriority, number> = { high: 0, medium: 1, low: 2 };
 
   const daysInMonth    = getDaysInMonth(year, month);
   const firstDayOfWeek = getFirstDay(year, month);
   const assignmentsOnDay = (day: number) => assignments.filter(a => a.due_date === toDateStr(year, month, day));
   const selectedAssignments = selected ? assignments.filter(a => a.due_date === selected) : [];
 
-  // Filtered assignments for status sections
-  const filteredAssignments = assignments.filter(a =>
-    (filterType === "all" || a.type === filterType) &&
-    (filterCourse === "all" || a.course === filterCourse)
-  );
+  // Filtered + sorted assignments for status sections and list view
+  const filteredAssignments = useMemo(() => {
+    let r = assignments.filter(a =>
+      (filterType === "all" || a.type === filterType) &&
+      (filterCourse === "all" || a.course === filterCourse) &&
+      (filterPriority === "all" || a.priority === filterPriority)
+    );
+    if (sortBy === "date") r = [...r].sort((a,b) => a.due_date.localeCompare(b.due_date));
+    if (sortBy === "priority") r = [...r].sort((a,b) => priorityOrder[a.priority??"medium"] - priorityOrder[b.priority??"medium"]);
+    if (sortBy === "course") r = [...r].sort((a,b) => a.course.localeCompare(b.course));
+    return r;
+  }, [assignments, filterType, filterCourse, filterPriority, sortBy]);
+
   const byStatus = (status: AssignmentStatus) => filteredAssignments.filter(a => a.status === status);
 
   // Stats
@@ -419,18 +428,16 @@ export default function CalendarPage() {
     ? Math.round(gradedA.reduce((s, a) => s + (a.score! / a.max_score!) * 100, 0) / gradedA.length)
     : null;
 
-  // Upcoming: next 7 days, not completed, sorted by due date then priority
-  const priorityOrder: Record<AssignmentPriority, number> = { high: 0, medium: 1, low: 2 };
+  // Upcoming: next 7 days, not completed
   const upcoming = assignments
-    .filter(a => {
-      const d = daysUntil(a.due_date);
-      return d >= 0 && d <= 7 && a.status !== "completed";
-    })
+    .filter(a => { const d = daysUntil(a.due_date); return d >= 0 && d <= 7 && a.status !== "completed"; })
     .sort((a, b) => {
       if (a.due_date !== b.due_date) return a.due_date.localeCompare(b.due_date);
       return priorityOrder[a.priority ?? "medium"] - priorityOrder[b.priority ?? "medium"];
     })
     .slice(0, 5);
+
+  if (!mounted) return null;
 
   const updateStatus = (id: number, status: AssignmentStatus) => {
     setAssignments(prev => { const u = prev.map(a => a.id === id ? { ...a, status } : a); saveLocal(u); return u; });
@@ -538,7 +545,7 @@ export default function CalendarPage() {
                 const tc = TYPE_COLORS[a.type];
                 return (
                   <div key={a.id} style={{flexShrink:0,borderRadius:12,padding:"10px 14px",background:tc+"10",border:`1px solid ${tc}30`,minWidth:160,cursor:"pointer"}}
-                    onClick={() => { setSelected(a.due_date); setYear(parseInt(a.due_date.slice(0,4))); setMonth(parseInt(a.due_date.slice(5,7))-1); }}>
+                    onClick={() => { setSelected(a.due_date); setYear(parseInt(a.due_date.slice(0,4))); setMonth(parseInt(a.due_date.slice(5,7))-1); setView("month"); }}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                       <span style={{fontSize:9,color:tc,fontWeight:700}}>{TYPE_ICONS[a.type]} {a.type}</span>
                       <span style={{fontSize:9,fontWeight:800,padding:"1px 6px",borderRadius:6,
@@ -563,74 +570,155 @@ export default function CalendarPage() {
         {/* ── CALENDAR TABLE ── */}
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <button onClick={prevMonth} className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white flex items-center justify-center transition-all duration-200 hover:scale-110">‹</button>
               <h2 className="text-lg font-bold text-white w-44 text-center">{MONTHS[month]} <span className="text-purple-300">{year}</span></h2>
               <button onClick={nextMonth} className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white flex items-center justify-center transition-all duration-200 hover:scale-110">›</button>
+              <button onClick={goToday} style={{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",color:"#a78bfa",cursor:"pointer"}}>
+                Today
+              </button>
             </div>
-            {/* Type legend */}
-            <div className="hidden lg:flex items-center gap-3">
-              {Object.keys(TYPE_COLORS).map(t => (
-                <div key={t} className="flex items-center gap-1">
-                  <span style={{width:8,height:8,borderRadius:"50%",backgroundColor:TYPE_COLORS[t],display:"inline-block",boxShadow:`0 0 5px ${TYPE_COLORS[t]}`}}/>
-                  <span style={{fontSize:10,color:"rgba(107,114,128,1)"}}>{t}</span>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {/* View toggle */}
+              <div style={{display:"flex",borderRadius:9,overflow:"hidden",border:"1px solid rgba(255,255,255,.1)"}}>
+                {(["month","list"] as const).map(v => (
+                  <button key={v} onClick={() => setView(v)} style={{padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",border:"none",transition:"all .15s",
+                    background:view===v?"rgba(124,58,237,.3)":"rgba(255,255,255,.03)",color:view===v?"white":"rgba(107,114,128,1)"}}>
+                    {v === "month" ? "📅 Month" : "📋 List"}
+                  </button>
+                ))}
+              </div>
+              {/* Type legend */}
+              <div className="hidden lg:flex items-center gap-3">
+                {Object.keys(TYPE_COLORS).map(t => (
+                  <div key={t} className="flex items-center gap-1">
+                    <span style={{width:8,height:8,borderRadius:"50%",backgroundColor:TYPE_COLORS[t],display:"inline-block",boxShadow:`0 0 5px ${TYPE_COLORS[t]}`}}/>
+                    <span style={{fontSize:10,color:"rgba(107,114,128,1)"}}>{t}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Month view */}
+          {view === "month" && (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>{DAYS.map(d => <th key={d} className="border border-white/10 px-2 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider bg-white/3 w-[14.28%]">{d}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const cells: React.ReactNode[] = [];
+                    for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const dateStr = toDateStr(year, month, d);
+                      const dayAssignments = assignmentsOnDay(d);
+                      const todayFlag = isToday(year, month, d);
+                      const isSelected = selected === dateStr;
+                      const hasOverdue = dayAssignments.some(a => a.due_date < today0 && a.status !== "completed");
+                      cells.push(
+                        <td key={d} onClick={() => setSelected(prev => prev === dateStr ? null : dateStr)}
+                          className={`border border-white/10 align-top p-2 cursor-pointer transition-all duration-200 hover:bg-white/8 ${isSelected ? "bg-purple-500/20 border-purple-400/50" : todayFlag ? "bg-cyan-500/10" : "bg-white/2"}`}
+                          style={{ verticalAlign: "top", outline: hasOverdue && !isSelected ? "1px solid rgba(239,68,68,.3)" : undefined }}>
+                          <div className={`text-xs font-bold mb-1.5 flex items-center gap-1 ${todayFlag ? "text-cyan-300" : isSelected ? "text-purple-200" : "text-gray-300"}`}>
+                            {todayFlag ? <span className="w-5 h-5 rounded-full bg-cyan-400 text-black flex items-center justify-center text-[10px] font-black">{d}</span> : <span>{d}</span>}
+                            {hasOverdue && <span style={{width:5,height:5,borderRadius:"50%",background:"#f87171",display:"inline-block"}}/>}
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            {dayAssignments.slice(0, 3).map(a => (
+                              <div key={a.id} className="text-[11px] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight"
+                                style={{
+                                  backgroundColor: TYPE_COLORS[a.type] + "25",
+                                  color: TYPE_COLORS[a.type],
+                                  border: `1px solid ${TYPE_COLORS[a.type]}40`,
+                                  textDecoration: a.status === "completed" ? "line-through" : "none",
+                                  opacity: a.status === "completed" ? 0.5 : 1,
+                                }}
+                                title={`${a.title} — ${a.course}`}>
+                                {TYPE_ICONS[a.type]} {a.title}
+                              </div>
+                            ))}
+                            {dayAssignments.length > 3 && <span className="text-[10px] text-gray-500 pl-1">+{dayAssignments.length - 3} more</span>}
+                          </div>
+                        </td>
+                      );
+                    }
+                    const rows: React.ReactNode[][] = [];
+                    let row: React.ReactNode[] = [];
+                    cells.forEach((cell, i) => {
+                      row.push(cell ?? <td key={`empty-${i}`} className="border border-white/10 bg-white/2 h-16" />);
+                      if (row.length === 7) { rows.push(row); row = []; }
+                    });
+                    while (row.length > 0 && row.length < 7) row.push(<td key={`pad-${row.length}`} className="border border-white/10 bg-white/2" />);
+                    if (row.length > 0) rows.push(row);
+                    return rows.map((r, i) => <tr key={i}>{r}</tr>);
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* List view */}
+          {view === "list" && (
+            <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:8}}>
+              {filteredAssignments.length === 0 ? (
+                <div style={{textAlign:"center",padding:"40px 0",color:"rgba(75,85,99,1)"}}>
+                  <div style={{fontSize:40,marginBottom:10}}>📭</div>
+                  <p>No assignments match your filters</p>
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>{DAYS.map(d => <th key={d} className="border border-white/10 px-2 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider bg-white/3 w-[14.28%]">{d}</th>)}</tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const cells: React.ReactNode[] = [];
-                  for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
-                  for (let d = 1; d <= daysInMonth; d++) {
-                    const dateStr = toDateStr(year, month, d);
-                    const dayAssignments = assignmentsOnDay(d);
-                    const todayFlag = isToday(year, month, d);
-                    const isSelected = selected === dateStr;
-                    const hasOverdue = dayAssignments.some(a => a.due_date < today0 && a.status !== "completed");
-                    cells.push(
-                      <td key={d} onClick={() => setSelected(prev => prev === dateStr ? null : dateStr)}
-                        className={`border border-white/10 align-top p-2 cursor-pointer transition-all duration-200 hover:bg-white/8 ${isSelected ? "bg-purple-500/20 border-purple-400/50" : todayFlag ? "bg-cyan-500/10" : "bg-white/2"}`}
-                        style={{ verticalAlign: "top", outline: hasOverdue && !isSelected ? "1px solid rgba(239,68,68,.3)" : undefined }}>
-                        <div className={`text-xs font-bold mb-1.5 flex items-center gap-1 ${todayFlag ? "text-cyan-300" : isSelected ? "text-purple-200" : "text-gray-300"}`}>
-                          {todayFlag ? <span className="w-5 h-5 rounded-full bg-cyan-400 text-black flex items-center justify-center text-[10px] font-black">{d}</span> : <span>{d}</span>}
-                          {hasOverdue && <span style={{width:5,height:5,borderRadius:"50%",background:"#f87171",display:"inline-block"}}/>}
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          {dayAssignments.slice(0, 3).map(a => (
-                            <div key={a.id} className="text-[11px] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight"
-                              style={{ backgroundColor: TYPE_COLORS[a.type] + "25", color: TYPE_COLORS[a.type], border: `1px solid ${TYPE_COLORS[a.type]}40` }}
-                              title={`${a.title} — ${a.course}`}>
-                              {TYPE_ICONS[a.type]} {a.title}
+              ) : Array.from(new Set(filteredAssignments.map(a => a.due_date))).sort().map(date => {
+                const dayA = filteredAssignments.filter(a => a.due_date === date);
+                const d = daysUntil(date);
+                return (
+                  <div key={date}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,marginTop:4}}>
+                      <span style={{fontSize:11,fontWeight:800,color:d<0?"#f87171":d===0?"#22d3ee":"rgba(156,163,175,1)"}}>
+                        {d===0?"TODAY":d<0?`${Math.abs(d)}d ago`:d===1?"TOMORROW":new Date(date+"T00:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
+                      </span>
+                      <div style={{flex:1,height:1,background:d<0?"rgba(239,68,68,.2)":d===0?"rgba(34,211,238,.2)":"rgba(255,255,255,.06)"}}/>
+                      <span style={{fontSize:10,color:"rgba(75,85,99,1)"}}>{dayA.length}</span>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                      {dayA.map(a => {
+                        const tc = TYPE_COLORS[a.type];
+                        const dl = daysUntil(a.due_date);
+                        return (
+                          <div key={a.id} style={{borderRadius:12,padding:"10px 14px",background:tc+"07",border:`1px solid ${tc}25`,display:"flex",alignItems:"center",gap:10}}>
+                            <span style={{fontSize:14,flexShrink:0}}>{TYPE_ICONS[a.type]}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <p style={{fontSize:12,fontWeight:600,color:a.status==="completed"?"rgba(107,114,128,1)":"white",textDecoration:a.status==="completed"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.title}</p>
+                              <p style={{fontSize:10,color:"rgba(107,114,128,1)",marginTop:1}}>{a.course} · <span style={{color:tc}}>{a.type}</span></p>
                             </div>
-                          ))}
-                          {dayAssignments.length > 3 && <span className="text-[10px] text-gray-500 pl-1">+{dayAssignments.length - 3} more</span>}
-                        </div>
-                      </td>
-                    );
-                  }
-                  const rows: React.ReactNode[][] = [];
-                  let row: React.ReactNode[] = [];
-                  cells.forEach((cell, i) => {
-                    row.push(cell ?? <td key={`empty-${i}`} className="border border-white/10 bg-white/2 h-16" />);
-                    if (row.length === 7) { rows.push(row); row = []; }
-                  });
-                  while (row.length > 0 && row.length < 7) row.push(<td key={`pad-${row.length}`} className="border border-white/10 bg-white/2" />);
-                  if (row.length > 0) rows.push(row);
-                  return rows.map((r, i) => <tr key={i}>{r}</tr>);
-                })()}
-              </tbody>
-            </table>
-          </div>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                              <span style={{fontSize:10}}>{PRIORITY_CONFIG[a.priority??"medium"].dot}</span>
+                              <span style={{fontSize:9,fontWeight:700,padding:"2px 7px",borderRadius:6,
+                                background:dl<0?"rgba(239,68,68,.2)":dl===0?"rgba(239,68,68,.2)":dl<=2?"rgba(251,191,36,.15)":"rgba(255,255,255,.05)",
+                                color:dl<0?"#f87171":dl===0?"#f87171":dl<=2?"#fbbf24":"rgba(107,114,128,1)"}}>
+                                {dl<0?`${Math.abs(dl)}d ago`:dl===0?"Today":dl===1?"Tmrw":`${dl}d`}
+                              </span>
+                              <select value={a.status} onChange={e => updateStatus(a.id, e.target.value as AssignmentStatus)}
+                                style={{fontSize:10,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",color:"white",borderRadius:6,padding:"3px 6px",cursor:"pointer",outline:"none"}}>
+                                {(Object.keys(STATUS_CONFIG) as AssignmentStatus[]).map(st => (
+                                  <option key={st} value={st} style={{background:"#1a1a2e"}}>{STATUS_CONFIG[st].label}</option>
+                                ))}
+                              </select>
+                              <button onClick={e=>{e.stopPropagation();setEditAssignment(a);}} style={{width:24,height:24,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",cursor:"pointer",fontSize:11}}>✏️</button>
+                              <button onClick={e=>{e.stopPropagation();handleDelete(a.id);}} style={{width:24,height:24,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.2)",cursor:"pointer",fontSize:11}}>🗑</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* ── SELECTED DAY POPUP ── */}
-        {selected && (
+        {/* ── SELECTED DAY POPUP (month view only) ── */}
+        {selected && view === "month" && (
           <div className="backdrop-blur-xl bg-white/5 border border-purple-400/30 rounded-3xl p-6 animate-fade-in">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white">
@@ -712,8 +800,21 @@ export default function CalendarPage() {
             <option value="all" style={{background:"#1a1a2e"}}>All Courses</option>
             {courses.map(c => <option key={c.name} value={c.name} style={{background:"#1a1a2e"}}>{c.name}</option>)}
           </select>
-          {(filterType !== "all" || filterCourse !== "all") && (
-            <button onClick={() => { setFilterType("all"); setFilterCourse("all"); }}
+          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
+            style={{padding:"5px 10px",borderRadius:8,fontSize:12,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",color:"white",cursor:"pointer",outline:"none"}}>
+            <option value="all" style={{background:"#1a1a2e"}}>All Priorities</option>
+            <option value="high" style={{background:"#1a1a2e"}}>🔴 High</option>
+            <option value="medium" style={{background:"#1a1a2e"}}>🟡 Medium</option>
+            <option value="low" style={{background:"#1a1a2e"}}>🟢 Low</option>
+          </select>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+            style={{padding:"5px 10px",borderRadius:8,fontSize:12,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",color:"white",cursor:"pointer",outline:"none"}}>
+            <option value="date" style={{background:"#1a1a2e"}}>📅 Sort: Date</option>
+            <option value="priority" style={{background:"#1a1a2e"}}>🔴 Sort: Priority</option>
+            <option value="course" style={{background:"#1a1a2e"}}>📚 Sort: Course</option>
+          </select>
+          {(filterType !== "all" || filterCourse !== "all" || filterPriority !== "all") && (
+            <button onClick={() => { setFilterType("all"); setFilterCourse("all"); setFilterPriority("all"); }}
               style={{padding:"5px 10px",borderRadius:8,fontSize:11,background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.2)",color:"#f87171",cursor:"pointer"}}>
               Clear ✕
             </button>
