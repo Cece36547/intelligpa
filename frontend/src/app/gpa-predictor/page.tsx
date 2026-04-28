@@ -794,16 +794,107 @@ export default function Page(){
                                 {cat.assignments.map(a=>{
                                   const ap=a.score!=null?(a.score/a.max_score)*100:null;
                                   const sc=ap!=null?(ap>=90?"#4ade80":ap>=70?"#fbbf24":"#f87171"):null;
+
+                                  const saveScore = async () => {
+                                    const input = document.getElementById(`score-${a.assignment_id}`) as HTMLInputElement;
+                                    const value = input?.value;
+
+                                    if (value === "" || value == null) return;
+
+                                    const score = Number(value);
+
+                                    try {
+                                      const res = await fetch(`http://localhost:8000/assignment/${a.assignment_id}/score`, {
+                                        method: "PUT",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                        },
+                                        body: JSON.stringify({
+                                          score,
+                                          max_score: a.max_score ?? 100,
+                                        }),
+                                      });
+
+                                      if (!res.ok) {
+                                        alert("Failed to update score");
+                                        return;
+                                      }
+
+                                      setCourses(prev =>
+                                        prev.map(course =>
+                                          course.course_id !== c.course_id
+                                            ? course
+                                            : {
+                                                ...course,
+                                                categories: course.categories.map(category =>
+                                                  category.category_id !== cat.category_id
+                                                    ? category
+                                                    : {
+                                                        ...category,
+                                                        assignments: category.assignments.map(assign =>
+                                                          assign.assignment_id !== a.assignment_id
+                                                            ? assign
+                                                            : { ...assign, score }
+                                                        ),
+                                                      }
+                                                ),
+                                              }
+                                        )
+                                      );
+                                    } catch (err) {
+                                      console.error(err);
+                                      alert("Error updating score");
+                                    }
+                                  };
+
                                   return(
                                     <div key={a.assignment_id} style={{paddingBlock:5,borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-                                      <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                                      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                                         <span style={{fontSize:11,color:"rgba(100,116,139,1)",overflow:"hidden",
                                           textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{a.title}</span>
-                                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:a.score!=null?700:400,
-                                          color:sc??"rgba(30,41,59,1)",flexShrink:0}}>
-                                          {a.score!=null?`${a.score}/${a.max_score}`:`—/${a.max_score}`}
-                                        </span>
+
+                                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                          <input
+                                            id={`score-${a.assignment_id}`}
+                                            type="number"
+                                            min="0"
+                                            max={a.max_score ?? 100}
+                                            defaultValue={a.score ?? ""}
+                                            placeholder="score"
+                                            style={{
+                                              width:52,
+                                              padding:"3px 5px",
+                                              borderRadius:6,
+                                              border:"1px solid rgba(255,255,255,.12)",
+                                              background:"rgba(255,255,255,.06)",
+                                              color:"white",
+                                              fontSize:10,
+                                              outline:"none"
+                                            }}
+                                          />
+
+                                          <span style={{fontSize:10,color:"rgba(71,85,105,1)"}}>
+                                            /{a.max_score ?? 100}
+                                          </span>
+
+                                          <button
+                                            onClick={saveScore}
+                                            style={{
+                                              padding:"3px 7px",
+                                              borderRadius:6,
+                                              border:"1px solid rgba(129,140,248,.3)",
+                                              background:"rgba(129,140,248,.12)",
+                                              color:"#a5b4fc",
+                                              fontSize:9,
+                                              fontWeight:700,
+                                              cursor:"pointer"
+                                            }}
+                                          >
+                                            Save
+                                          </button>
+                                        </div>
                                       </div>
+
                                       {ap!=null&&<div style={{marginTop:3,height:2,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.05)"}}>
                                         <div style={{height:"100%",borderRadius:999,width:`${ap}%`,background:sc!}}/>
                                       </div>}
