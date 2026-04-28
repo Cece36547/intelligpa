@@ -3,6 +3,7 @@ from app.schemas.student_schema import StudentCreate, StudentResponse, StudentUp
 from app.models.student import Student
 from app.database.db import get_db
 from fastapi import Depends
+from app.firebase_auth import verify_firebase_token
 from sqlalchemy.orm import Session
 
 
@@ -23,18 +24,18 @@ def createStudent(student: StudentCreate, db: Session = Depends(get_db)):
     db.refresh(new_student)
     return new_student
 
-@router.get("/{student_user_name}", response_model=StudentResponse) 
-def getStudent(student_user_name: str, db: Session = Depends(get_db)):
-    student = db.query(Student).filter(Student.student_user_name == student_user_name).first() #querying database for student user name
+@router.get("/", response_model=StudentResponse) 
+def getStudent(user=Depends(verify_firebase_token), db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first() #querying database for student user name
 
     if student is None: #if student is not found, throw an error 
         raise HTTPException(status_code=404, detail="Student not found")
     return student
     
 
-@router.put("/{student_user_name}", response_model=StudentResponse)
-def updateStudent(student_user_name: str, update: StudentUpdate, db: Session = Depends(get_db)):
-    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+@router.put("/", response_model=StudentResponse)
+def updateStudent(update: StudentUpdate, user=Depends(verify_firebase_token),db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     for field, value in update.model_dump(exclude_none=True).items():
@@ -43,11 +44,23 @@ def updateStudent(student_user_name: str, update: StudentUpdate, db: Session = D
     db.refresh(student)
     return student
 
-@router.delete("/{student_user_name}")
-def deleteStudent(student_user_name: str, db: Session = Depends(get_db)):
-    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+@router.delete("/")
+def deleteStudent(user=Depends(verify_firebase_token) , db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     db.delete(student)
     db.commit()
-    return {"message": f"Student {student_user_name} deleted successfully"}
+    return {"message": f"Student deleted successfully"}
+
+@router.put("/{student_user_name}/firebase", response_model=StudentResponse)
+def linkFirebaseUid(student_user_name: str, firebase_uid: str, email: str = None, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.student_user_name == student_user_name).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    student.firebase_uid = firebase_uid
+    if email:
+        student.email = email
+    db.commit()
+    db.refresh(student)
+    return student

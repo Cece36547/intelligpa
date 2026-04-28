@@ -8,13 +8,13 @@ class StudentCreate(BaseModel):
     goal_gpa: float
 
     @field_validator("student_user_name") #Username must be > 6
-    def validate_user_name(user_name):
+    def validate_user_name(cls, user_name: str) -> str:
         if len(user_name) < 6:
             raise ValueError(f" User Name must be longer than 6 characters. ")
         return user_name
     
     @field_validator("goal_gpa")
-    def validate_gpa(gpa):
+    def validate_gpa(cls, gpa: float) -> float:
         if gpa < 0.0 or gpa > 4.0:
             raise ValueError(f"Grade Poing Average's must be between 0.0 and 4.0.")
         return gpa
@@ -39,7 +39,3 @@ class StudentUpdate(BaseModel):
             raise ValueError(f"Grade Poing Average's must be between 0.0 and 4.0.")
         return gpa
     
-
-
-
-
