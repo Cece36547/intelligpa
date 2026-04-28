@@ -13,6 +13,7 @@ class createAssignment(BaseModel):
 
 class assignmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    assignment_id: int
     title: str
     due_date: Optional[date] = None
     score: Optional[float] = None

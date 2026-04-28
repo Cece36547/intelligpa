@@ -10,8 +10,15 @@ router = APIRouter(prefix='/student', tags=["Student"])
 
 @router.post("/", response_model=StudentResponse)
 def createStudent(student: StudentCreate, db: Session = Depends(get_db)):
-    new_student = Student(**student.model_dump()) 
-    db.add(new_student) 
+    existing_student = db.query(Student).filter(
+        Student.student_user_name == student.student_user_name
+    ).first()
+
+    if existing_student:
+        raise HTTPException(status_code=409, detail="Student already exists")
+
+    new_student = Student(**student.model_dump())
+    db.add(new_student)
     db.commit()
     db.refresh(new_student)
     return new_student
