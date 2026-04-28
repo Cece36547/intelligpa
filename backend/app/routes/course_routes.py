@@ -3,6 +3,9 @@ from app.schemas.course_schema import courseResponse, createCourse
 from app.services.syllabus_service import process_syllabus
 from app.models.student import Student
 from app.models.course import Course
+from app.models.assignmentCategory import AssignmentCategory
+from app.models.assignment import Assignment
+from datetime import datetime
 from app.database.db import get_db
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -35,14 +38,72 @@ async def addCourse(student_user_name: str, file: UploadFile = File(...), db: Se
     existing_course = db.query(Course).filter(Course.student_user_name == student_user_name, Course.course_name == parsed["course_name"]).first()
     if existing_course:
         raise HTTPException(status_code=409, detail="Course already exist for this student")
-    new_course = Course(course_name=parsed["course_name"], instructor= parsed["instructor"])
-    
-    new_course.student_user_name = student.student_user_name
+    new_course = Course(
+        course_name=parsed.get("course_name"),
+        instructor=parsed.get("instructor"),
+        student_user_name=student.student_user_name
+    )
 
-    
     db.add(new_course)
     db.commit()
     db.refresh(new_course)
+
+    # Save assignment categories
+    category_map = {}
+
+    for cat in parsed.get("assignment_categories", []):
+        category_name = cat.get("category_name")
+        weight = cat.get("weight_percent")
+
+        if not category_name:
+            continue
+
+        new_category = AssignmentCategory(
+            category_name=category_name,
+            weight=weight,
+            course_id=new_course.course_id
+        )
+
+        db.add(new_category)
+        db.commit()
+        db.refresh(new_category)
+
+        category_map[category_name.lower()] = new_category.category_id
+
+    # Save assignments
+    for assignment in parsed.get("assignments", []):
+        title = assignment.get("title")
+        assignment_type = assignment.get("type")
+        due_date_raw = assignment.get("due_date")
+        max_score = assignment.get("max_points") or assignment.get("points")
+        category_name = assignment.get("category_name")
+
+        parsed_due_date = None
+        if due_date_raw:
+            try:
+                parsed_due_date = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                parsed_due_date = None
+
+        category_id = None
+        if category_name:
+            category_id = category_map.get(category_name.lower())
+
+        new_assignment = Assignment(
+            title=title or "Untitled Assignment",
+            assignment_type=assignment_type,
+            due_date=parsed_due_date,
+            score=None,
+            max_score=max_score,
+            course_id=new_course.course_id,
+            category_id=category_id
+        )
+
+        db.add(new_assignment)
+
+    db.commit()
+    db.refresh(new_course)
+
     return new_course
 
 @router.get("/course/{student_user_name}", response_model=list[courseResponse])

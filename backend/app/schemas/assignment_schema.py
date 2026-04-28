@@ -10,12 +10,14 @@ class createAssignment(BaseModel):
     score: float
     max_score: float
 
+
 class assignmentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj
+    model_config = ConfigDict(from_attributes=True)
     title: str
     due_date: Optional[date] = None
-    score: float
+    score: Optional[float] = None
     max_score: Optional[float] = None
+
 
 class updateAssignmen(BaseModel):
     assignment_type: Optional[str]

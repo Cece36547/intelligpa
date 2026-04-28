@@ -1,103 +1,214 @@
-import pdfplumber
-import groq
-import json
 import re
-from dotenv import load_dotenv
 from io import BytesIO
-import os
-
-load_dotenv()
+import pdfplumber
 
 
-def get_groq_client():
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is not set")
-    return groq.Groq(api_key=api_key)
+BAD_CATEGORY_WORDS = [
+    "zoom", "http", "email", "office", "regular class", "final class",
+    "help needed", "brightspace", "instructor", "communication",
+    "table", "due date", "if any", "percentage", "indiv", "individual", "group due"
+]
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    # Extract all text from PDF given raw bytes
     text_pages = []
+
     with pdfplumber.open(BytesIO(file_bytes)) as pdf:
         for page in pdf.pages:
             page_text = page.extract_text()
             if page_text:
                 text_pages.append(page_text)
-    return "\n\n".join(text_pages)
+
+    return "\n".join(text_pages)
 
 
-def parse_syllabus_with_groq(pdf_text: str) -> dict:
-    """
-    Send extracted syllabus text to Groq and get back structured data:
-    - course name
-    - assignment categories with weights
-    - individual assignments/exams with due dates and point values
-    """
-    client = get_groq_client()
+def clean_text(text: str) -> str:
+    text = text.replace("–", "-").replace("—", "-")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    return text.strip()
 
-    prompt = f"""You are a syllabus parser. Extract structured academic data from the syllabus text below.
 
-Return ONLY a valid JSON object with this exact shape (no markdown, no explanation):
-{{
-  "course_name": "string",
-  "instructor": "string or null",
-  "assignment_categories": [
-    {{
-      "category_name": "string",
-      "weight_percent": number or null
-    }}
-  ],
-  "assignments": [
-    {{
-      "title": "string",
-      "type": "string (e.g. Homework, Quiz, Midterm, Final, Project, Presentation, Lab)",
-      "due_date": "YYYY-MM-DD or null",
-      "points": number or null,
-      "max_points": number or null,
-      "category_name": "string or null (match to assignment_categories above if possible)"
-    }}
-  ]
-}}
+def clean_name(name: str) -> str:
+    name = re.sub(r"\s+", " ", name)
+    name = name.strip(" .:-,;")
 
-Rules:
-- If a weight or points value is not mentioned, use null.
-- If a due date is mentioned but year is missing, infer the most likely upcoming year.
-- Normalize date formats to YYYY-MM-DD.
-- Include every assignment, exam, quiz, project, and presentation you can find.
-- For category weights, look for grading breakdowns.
+    # Remove common table/header junk
+    name = re.sub(r"^(individual|group|indiv\.?|assignment|category)\s+", "", name, flags=re.I)
+    name = re.sub(r"\s+(individual|group)$", "", name, flags=re.I)
 
-SYLLABUS TEXT:
-{pdf_text}
-"""
+    # Cut off if it accidentally captured syllabus prose
+    stop_phrases = [
+        " as this will", " office hours", " the instructor", " via zoom",
+        " link via", " brightspace", " due date", " if any"
+    ]
 
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-        max_completion_tokens=2048,
-        top_p=1,
-        stream=False,
-        stop=None,
-    )
+    lower = name.lower()
+    for phrase in stop_phrases:
+        idx = lower.find(phrase)
+        if idx != -1:
+            name = name[:idx].strip(" .:-,;")
+            break
 
-    raw = completion.choices[0].message.content.strip()
+    return name
 
-    # Strip accidental markdown fences if present
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
 
-    return json.loads(raw)
+def is_bad_name(name: str) -> bool:
+    lower = name.lower()
+
+    if len(name) < 3 or len(name) > 70:
+        return True
+
+    if any(word in lower for word in BAD_CATEGORY_WORDS):
+        return True
+
+    if re.fullmatch(r"table\s*\d*", lower):
+        return True
+
+    if lower.count("/") >= 2:
+        return True
+    if name.lower().startswith("ivid"):
+        return True
+
+    if "attendance and participation individual" in lower:
+        return False
+
+    return False
+
+
+def extract_course_name(text: str) -> str:
+    # Prefer clean line-based matches
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    for line in lines[:40]:
+        match = re.search(r"(CSCI\s*\d+[A-Z0-9]*)\s*[-:]\s*(.+)", line, re.I)
+        if match:
+            code = match.group(1).strip()
+            title = clean_name(match.group(2))
+            return f"{code} - {title}" if title else code
+
+    # Fallback: just course code
+    match = re.search(r"(CSCI\s*\d+[A-Z0-9]*)", text, re.I)
+    if match:
+        return match.group(1).strip()
+
+    return "Parsed Syllabus Course"
+
+
+def extract_instructor(text: str) -> str | None:
+    patterns = [
+        r"(?:Professor|Instructor)\s*[:\-]\s*([A-Za-z .'-]{2,60})",
+        r"Prof\.\s*([A-Za-z .'-]{2,60})",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.I)
+        if match:
+            name = clean_name(match.group(1))
+            if not is_bad_name(name):
+                return name
+
+    return None
+
+
+def extract_categories(text: str) -> list[dict]:
+    categories = []
+    seen = set()
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    patterns = [
+        r"^(\d{1,3})\s*%\s*[-:]?\s*(.+)$",
+        r"^(.+?)\s*[-:]?\s*(\d{1,3})\s*%$",
+    ]
+
+    for line in lines:
+        for pattern in patterns:
+            match = re.search(pattern, line, re.I)
+            if not match:
+                continue
+
+            if match.group(1).isdigit():
+                weight = float(match.group(1))
+                name = clean_name(match.group(2))
+            else:
+                name = clean_name(match.group(1))
+                weight = float(match.group(2))
+
+            if weight <= 0 or weight > 100:
+                continue
+
+            if is_bad_name(name):
+                continue
+
+            key = name.lower()
+            if key not in seen:
+                seen.add(key)
+                categories.append({
+                    "category_name": name,
+                    "weight_percent": weight
+                })
+
+    return categories
+
+
+def infer_assignment_type(name: str) -> str:
+    lower = name.lower()
+
+    if "quiz" in lower:
+        return "Quiz"
+    if "exam" in lower or "final" in lower or "midterm" in lower:
+        return "Exam"
+    if "presentation" in lower:
+        return "Presentation"
+    if "paper" in lower or "document" in lower:
+        return "Paper"
+    if "project" in lower or "application" in lower:
+        return "Project"
+    if "participation" in lower or "attendance" in lower:
+        return "Participation"
+    if "review" in lower:
+        return "Review"
+    if "discussion" in lower or "forum" in lower:
+        return "Discussion"
+
+    return "Assignment"
+
+
+def extract_assignments_from_categories(categories: list[dict]) -> list[dict]:
+    assignments = []
+
+    for cat in categories:
+        name = cat["category_name"]
+
+        assignments.append({
+            "title": name,
+            "type": infer_assignment_type(name),
+            "due_date": None,
+            "points": None,
+            "max_points": 100,
+            "category_name": name
+        })
+
+    return assignments
 
 
 def process_syllabus(file_bytes: bytes) -> dict:
-    """
-    Full pipeline: PDF bytes → extracted text → Groq parsing → structured dict.
-    """
     pdf_text = extract_text_from_pdf(file_bytes)
 
     if not pdf_text.strip():
         raise ValueError("Could not extract any text from the PDF. It may be scanned/image-based.")
 
-    parsed = parse_syllabus_with_groq(pdf_text)
-    return parsed
+    text = clean_text(pdf_text)
+
+    categories = extract_categories(text)
+    assignments = extract_assignments_from_categories(categories)
+
+    return {
+        "course_name": extract_course_name(text),
+        "instructor": extract_instructor(text),
+        "assignment_categories": categories,
+        "assignments": assignments,
+        "parser_type": "rule_based",
+        "ai_used": False
+    }
