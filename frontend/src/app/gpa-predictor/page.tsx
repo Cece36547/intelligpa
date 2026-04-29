@@ -117,6 +117,8 @@ function TickBar({pct,goal,color}:{pct:number;goal:number;color:string}){
 
 export default function Page(){
   const router=useRouter(),pathname=usePathname();
+  const [neededResult, setNeededResult] = useState<any>(null);
+  const [neededLoading, setNeededLoading] = useState(false);
   const [courses,setCourses]=useState<Course[]>([]);
   const [loading,setLoading]=useState(true);
   const [mounted,setMounted]=useState(false);
@@ -135,21 +137,34 @@ export default function Page(){
       const unsub=auth.onAuthStateChanged(user=>{
         unsub();if(!user){setLoading(false);return;}
         user.getIdToken().then(token=>{
-          fetch(`http://localhost:8000/course/`,{headers:{Authorization:`Bearer ${token}`}})
-            .then(r=>r.json()).then((data:any[])=>{
-              if(!Array.isArray(data)){setLoading(false);return;}
-              setCourses(data.map((c,i)=>({
-                course_id:c.course_id,course_name:c.course_name,instructor:c.instructor??"",
-                credits:c.credits??3,color:PALETTE[i%PALETTE.length],
-                categories:(c.categories??[]).map((cat:any)=>({
-                  category_id:cat.category_id,category_name:cat.category_name,weight:cat.weight??0,
-                  assignments:(cat.assignments??[]).map((a:any)=>({
-                    assignment_id:a.assignment_id,title:a.title??"Untitled",
-                    score:a.score??null,max_score:a.max_score??100,hypothetical:null,
+          fetch(`http://localhost:8000/gpa/project/${u}`)
+            .then(r => r.json())
+            .then((data:any) => {
+              const projectedCourses = data.projected_courses ?? [];
+
+              setCourses(projectedCourses.map((c:any, i:number) => ({
+                course_id: c.course_id,
+                course_name: c.course_name,
+                instructor: c.instructor ?? "",
+                credits: c.credits ?? 3,
+                color: PALETTE[i % PALETTE.length],
+                categories: (c.categories ?? []).map((cat:any) => ({
+                  category_id: cat.category_id,
+                  category_name: cat.category_name,
+                  weight: cat.weight ?? 0,
+                  assignments: (cat.assignments ?? []).map((a:any) => ({
+                    assignment_id: a.assignment_id,
+                    title: a.title ?? "Untitled",
+                    score: a.score ?? null,
+                    max_score: a.max_score ?? 100,
+                    hypothetical: null,
                   })),
                 })),
-              })));setLoading(false);
-            }).catch(()=>setLoading(false));
+              })));
+
+              setLoading(false);
+            })
+            .catch(() => setLoading(false));
         });
       });
     });
@@ -170,6 +185,25 @@ export default function Page(){
   const totalCr=courses.reduce((s,c)=>s+c.credits,0);
   const hasWI=diff!=null&&Math.abs(diff)>.001;
   const accentColor=curGpa!=null?gc(ltr((curGpa/4)*100).letter):"#818cf8";
+  const calculateNeededScore = async () => {
+    if (!selCourse || !username) return;
+
+    setNeededLoading(true);
+
+    try {
+      const res = await fetch(
+        `http://localhost:8000/gpa/needed/${username}/${selCourse.course_id}?target=${target}`
+      );
+
+      const data = await res.json();
+      setNeededResult(data);
+    } catch (err) {
+      console.error("Needed score error:", err);
+    } finally {
+      setNeededLoading(false);
+    }
+  };
+
 
   const upd=useCallback((cid:number,catId:number,aid:number,val:number|null)=>
     setCourses(p=>p.map(c=>c.course_id!==cid?c:{...c,categories:c.categories.map(cat=>cat.category_id!==catId?cat:{
@@ -860,16 +894,19 @@ export default function Page(){
                                             min="0"
                                             max={a.max_score ?? 100}
                                             defaultValue={a.score ?? ""}
-                                            placeholder="score"
+                                            placeholder="Score"
+                                            onClick={(e) => e.stopPropagation()}
                                             style={{
-                                              width:52,
-                                              padding:"3px 5px",
-                                              borderRadius:6,
-                                              border:"1px solid rgba(255,255,255,.12)",
-                                              background:"rgba(255,255,255,.06)",
-                                              color:"white",
-                                              fontSize:10,
-                                              outline:"none"
+                                              width: 80,
+                                              height: 34,
+                                              padding: "6px 8px",
+                                              borderRadius: 8,
+                                              border: "1px solid rgba(129,140,248,.45)",
+                                              background: "rgba(15,23,42,.95)",
+                                              color: "white",
+                                              fontSize: 13,
+                                              fontWeight: 700,
+                                              outline: "none"
                                             }}
                                           />
 
@@ -878,16 +915,20 @@ export default function Page(){
                                           </span>
 
                                           <button
-                                            onClick={saveScore}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              saveScore();
+                                            }}
                                             style={{
-                                              padding:"3px 7px",
-                                              borderRadius:6,
-                                              border:"1px solid rgba(129,140,248,.3)",
-                                              background:"rgba(129,140,248,.12)",
-                                              color:"#a5b4fc",
-                                              fontSize:9,
-                                              fontWeight:700,
-                                              cursor:"pointer"
+                                              height: 34,
+                                              padding: "6px 12px",
+                                              borderRadius: 8,
+                                              border: "1px solid rgba(129,140,248,.45)",
+                                              background: "rgba(129,140,248,.18)",
+                                              color: "#c7d2fe",
+                                              fontSize: 11,
+                                              fontWeight: 800,
+                                              cursor: "pointer"
                                             }}
                                           >
                                             Save
@@ -973,6 +1014,54 @@ export default function Page(){
                         </button>
                       ))}
                     </div>
+                    <button
+                      onClick={calculateNeededScore}
+                      disabled={!selCourse || neededLoading}
+                      style={{
+                        marginTop: 18,
+                        width: "100%",
+                        height: 44,
+                        borderRadius: 12,
+                        border: "1px solid rgba(129,140,248,.45)",
+                        background: "linear-gradient(135deg,#7c3aed,#06b6d4)",
+                        color: "white",
+                        fontWeight: 800,
+                        cursor: !selCourse || neededLoading ? "not-allowed" : "pointer",
+                        opacity: !selCourse ? 0.5 : 1,
+                        fontFamily: "inherit"
+                      }}
+                    >
+                      {neededLoading ? "Calculating..." : "Calculate Needed Score"}
+                    </button>
+
+                    {neededResult && (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          padding: 16,
+                          borderRadius: 16,
+                          background: "rgba(15,23,42,.75)",
+                          border: "1px solid rgba(129,140,248,.25)",
+                          color: "white"
+                        }}
+                      >
+                        <div style={{ fontSize: 9, letterSpacing: ".18em", color: "#94a3b8", textTransform: "uppercase" }}>
+                          Needed to reach {neededResult.target_letter}
+                        </div>
+
+                        <div style={{ fontSize: 36, fontWeight: 900, marginTop: 8, color: "#a5b4fc" }}>
+                          {neededResult.needed_average_on_remaining ?? "Not possible"}%
+                        </div>
+
+                        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+                          average needed on remaining {neededResult.remaining_weight}% of the course
+                        </div>
+
+                        <div style={{ fontSize: 11, color: "#22c55e", marginTop: 10 }}>
+                          Known weighted total: {neededResult.known_weighted_total}%
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

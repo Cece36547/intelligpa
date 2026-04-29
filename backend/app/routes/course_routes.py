@@ -159,7 +159,29 @@ def updateCourseRoute(
 
     return course
 
+@router.delete("/id/{course_id}")
+def deleteCourseById(
+    course_id: int,
+    user=Depends(verify_firebase_token),
+    db: Session = Depends(get_db)
+):
+    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
 
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    course = db.query(Course).filter(
+        Course.course_id == course_id,
+        Course.student_user_name == student.student_user_name
+    ).first()
+
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    db.delete(course)
+    db.commit()
+
+    return {"message": f"Course {course_id} deleted successfully"}
 @router.delete("/{course_name}")
 def deleteClass(
     course_name: str,

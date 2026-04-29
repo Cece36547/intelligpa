@@ -50,10 +50,6 @@ def calculate_term_gpa(courses: list[dict]) -> float:
 
 
 def compute_category_average(assignments: list) -> float | None:
-    """
-    Compute category average using total earned points / total possible points.
-    Returns None if there are no graded assignments in the category.
-    """
     graded = [
         a for a in assignments
         if a.score is not None and a.max_score is not None and a.max_score > 0
@@ -72,15 +68,6 @@ def compute_category_average(assignments: list) -> float | None:
 
 
 def project_course_percentage(course) -> dict:
-    """
-    Project final course percentage using category weights and current performance.
-
-    Assumption:
-    - If a category has graded work, use that category's current weighted average.
-    - If a category has no graded work yet, fall back to the student's overall known
-      course average across other graded categories.
-    - If nothing is graded in the whole course, default to 0.0.
-    """
     category_results = []
     known_category_averages = []
 
@@ -95,16 +82,29 @@ def project_course_percentage(course) -> dict:
         if category_average is not None:
             known_category_averages.append(category_average)
 
+        graded_count = len([
+            a for a in category_assignments
+            if a.score is not None and a.max_score is not None and a.max_score > 0
+        ])
+
         category_results.append({
             "category_id": category.category_id,
             "category_name": category.category_name,
             "weight": category.weight,
             "current_average": None if category_average is None else round(category_average, 2),
             "assignments_count": len(category_assignments),
-            "graded_assignments_count": len([
-                a for a in category_assignments
-                if a.score is not None and a.max_score is not None and a.max_score > 0
-            ]),
+            "graded_assignments_count": graded_count,
+            "projected_average_used": 0,
+            "assignments": [
+                {
+                    "assignment_id": a.assignment_id,
+                    "title": a.title,
+                    "score": a.score,
+                    "max_score": a.max_score,
+                    "due_date": a.due_date.isoformat() if a.due_date else None,
+                }
+                for a in category_assignments
+            ],
         })
 
     overall_known_average = (
@@ -127,10 +127,7 @@ def project_course_percentage(course) -> dict:
 
         item["projected_average_used"] = round(used_average, 2)
 
-    if total_weight == 0:
-        projected_percentage = 0.0
-    else:
-        projected_percentage = projected_total
+    projected_percentage = projected_total if total_weight > 0 else 0.0
 
     return {
         "projected_percentage": round(projected_percentage, 2),
@@ -140,9 +137,6 @@ def project_course_percentage(course) -> dict:
 
 
 def project_student_gpa(student: Student) -> dict:
-    """
-    Project GPA for a student using real course/category/assignment data.
-    """
     projected_courses = []
     total_quality_points = 0.0
     total_credits = 0
@@ -185,11 +179,125 @@ def project_student_gpa(student: Student) -> dict:
         "projected_courses": projected_courses,
     }
 
+def needed_average_for_target(course, target_percentage: float = 90.0) -> dict:
+    """
+    Calculates what average the student needs on all ungraded categories
+    to reach a target final course percentage.
+    Default target is 90% = A-.
+    """
+    known_weighted_total = 0.0
+    remaining_weight = 0.0
+    category_breakdown = []
+
+    for category in course.categories:
+        category_assignments = [
+            a for a in course.assignments
+            if a.category_id == category.category_id
+        ]
+
+        category_average = compute_category_average(category_assignments)
+        weight = category.weight or 0.0
+
+        if category_average is None:
+            remaining_weight += weight
+            status = "ungraded"
+        else:
+            known_weighted_total += category_average * (weight / 100.0)
+            status = "graded"
+
+        category_breakdown.append({
+            "category_id": category.category_id,
+            "category_name": category.category_name,
+            "weight": weight,
+            "current_average": None if category_average is None else round(category_average, 2),
+            "status": status,
+        })
+
+    if remaining_weight == 0:
+        needed_average = 0.0 if known_weighted_total >= target_percentage else None
+    else:
+        needed_average = (target_percentage - known_weighted_total) / (remaining_weight / 100.0)
+
+    return {
+        "course_id": course.course_id,
+        "course_name": course.course_name,
+        "target_percentage": target_percentage,
+        "target_letter": percentage_to_letter(target_percentage),
+        "known_weighted_total": round(known_weighted_total, 2),
+        "remaining_weight": round(remaining_weight, 2),
+        "needed_average_on_remaining": None if needed_average is None else round(needed_average, 2),
+        "possible": needed_average is not None and needed_average <= 100,
+        "already_met": known_weighted_total >= target_percentage and remaining_weight == 0,
+        "categories": category_breakdown,
+    }
+
+def simulate_course_what_if(course, hypothetical_scores: list[dict]) -> dict:
+    """
+    Simulates course grade using real graded scores plus hypothetical scores.
+
+    hypothetical_scores format:
+    [
+        {"assignment_id": 1, "score": 95, "max_score": 100}
+    ]
+    """
+
+    hypothetical_map = {
+        item["assignment_id"]: item
+        for item in hypothetical_scores
+    }
+
+    category_results = []
+    projected_total = 0.0
+    total_weight = 0.0
+
+    for category in course.categories:
+        category_assignments = [
+            a for a in course.assignments
+            if a.category_id == category.category_id
+        ]
+
+        earned = 0.0
+        possible = 0.0
+
+        for assignment in category_assignments:
+            if assignment.assignment_id in hypothetical_map:
+                hypo = hypothetical_map[assignment.assignment_id]
+                score = hypo.get("score")
+                max_score = hypo.get("max_score", assignment.max_score or 100)
+            else:
+                score = assignment.score
+                max_score = assignment.max_score
+
+            if score is not None and max_score is not None and max_score > 0:
+                earned += score
+                possible += max_score
+
+        category_average = None
+        if possible > 0:
+            category_average = (earned / possible) * 100
+            projected_total += category_average * ((category.weight or 0) / 100)
+            total_weight += category.weight or 0
+
+        category_results.append({
+            "category_id": category.category_id,
+            "category_name": category.category_name,
+            "weight": category.weight,
+            "simulated_average": None if category_average is None else round(category_average, 2),
+        })
+
+    simulated_percentage = projected_total if total_weight > 0 else 0.0
+    simulated_letter = percentage_to_letter(simulated_percentage)
+
+    return {
+        "course_id": course.course_id,
+        "course_name": course.course_name,
+        "simulated_percentage": round(simulated_percentage, 2),
+        "simulated_letter": simulated_letter,
+        "simulated_points": GRADE_POINTS[simulated_letter],
+        "categories": category_results,
+    }
 
 def project_gpa(current_gpa: float, goal_gpa: float) -> dict:
-    """
-    Legacy baseline projection. Keep for comparison/testing.
-    """
     difference = round(goal_gpa - current_gpa, 2)
 
     if difference <= 0:
