@@ -135,16 +135,65 @@ def project_course_percentage(course) -> dict:
         "categories": category_results,
     }
 
+def calculate_risk_level(projected_gpa: float, goal_gpa: float, graded_assignments: int, total_assignments: int) -> dict:
+
+    if total_assignments == 0:
+        completion_rate = 0.0
+    else:
+        completion_rate = graded_assignments / total_assignments
+
+    # If goal is missing or invalid, do not pretend risk is low
+    if goal_gpa is None or goal_gpa <= 0:
+        return {
+            "risk_level": "Unknown",
+            "confidence": "Low",
+            "difference_from_goal": None,
+            "completion_rate": round(completion_rate * 100, 2),
+            "message": "Goal GPA is missing, so risk cannot be evaluated accurately."
+        }
+
+    difference = round(projected_gpa - goal_gpa, 2)
+
+    if projected_gpa >= goal_gpa and completion_rate >= 0.5:
+        risk_level = "Low Risk"
+        confidence = "High"
+        message = "Student is currently projected to meet the goal with enough graded data."
+    elif projected_gpa >= goal_gpa and completion_rate < 0.5:
+        risk_level = "Moderate Risk"
+        confidence = "Medium"
+        message = "Student is projected to meet the goal, but there is limited graded data."
+    elif projected_gpa < goal_gpa and abs(difference) <= 0.3:
+        risk_level = "Moderate Risk"
+        confidence = "Medium"
+        message = "Student is slightly below the goal but still within recovery range."
+    else:
+        risk_level = "High Risk"
+        confidence = "Low"
+        message = "Student is projected below the goal and needs improvement."
+
+    return {
+        "risk_level": risk_level,
+        "confidence": confidence,
+        "difference_from_goal": difference,
+        "completion_rate": round(completion_rate * 100, 2),
+        "message": message
+    }
 
 def project_student_gpa(student: Student) -> dict:
     projected_courses = []
     total_quality_points = 0.0
     total_credits = 0
+    total_assignments = 0
+    graded_assignments = 0
 
     for course in student.courses:
         credits = course.credits if course.credits is not None else 3
 
         course_projection = project_course_percentage(course)
+
+        for category in course_projection["categories"]:
+            total_assignments += category["assignments_count"]
+            graded_assignments += category["graded_assignments_count"]
         projected_percentage = course_projection["projected_percentage"]
         projected_letter = percentage_to_letter(projected_percentage)
         projected_points = GRADE_POINTS[projected_letter]
@@ -168,6 +217,13 @@ def project_student_gpa(student: Student) -> dict:
     current_gpa = student.current_gpa if student.current_gpa is not None else 0.0
     goal_gpa = student.goal_gpa if student.goal_gpa is not None else 0.0
 
+    risk_analysis = calculate_risk_level(
+        projected_gpa=projected_gpa,
+        goal_gpa=goal_gpa,
+        graded_assignments=graded_assignments,
+        total_assignments=total_assignments
+    )
+
     return {
         "student_user_name": student.student_user_name,
         "current_gpa": round(current_gpa, 2),
@@ -176,6 +232,7 @@ def project_student_gpa(student: Student) -> dict:
         "goal_met": projected_gpa >= goal_gpa,
         "difference_from_goal": round(projected_gpa - goal_gpa, 2),
         "total_credits_used": total_credits,
+        "risk_analysis": risk_analysis,
         "projected_courses": projected_courses,
     }
 
@@ -245,7 +302,9 @@ def simulate_course_what_if(course, hypothetical_scores: list[dict]) -> dict:
         item["assignment_id"]: item
         for item in hypothetical_scores
     }
-
+    current_projection = project_course_percentage(course)
+    current_percentage = current_projection["projected_percentage"]
+    
     category_results = []
     projected_total = 0.0
     total_weight = 0.0
@@ -289,12 +348,14 @@ def simulate_course_what_if(course, hypothetical_scores: list[dict]) -> dict:
     simulated_letter = percentage_to_letter(simulated_percentage)
 
     return {
-        "course_id": course.course_id,
-        "course_name": course.course_name,
-        "simulated_percentage": round(simulated_percentage, 2),
-        "simulated_letter": simulated_letter,
-        "simulated_points": GRADE_POINTS[simulated_letter],
-        "categories": category_results,
+    "course_id": course.course_id,
+    "course_name": course.course_name,
+    "current_percentage": current_percentage,
+    "simulated_percentage": round(simulated_percentage, 2),
+    "delta_percentage": round(simulated_percentage - current_percentage, 2),
+    "simulated_letter": simulated_letter,
+    "simulated_points": GRADE_POINTS[simulated_letter],
+    "categories": category_results,
     }
 
 def project_gpa(current_gpa: float, goal_gpa: float) -> dict:

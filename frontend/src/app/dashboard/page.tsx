@@ -224,7 +224,13 @@ function DeleteConfirmModal({course,onClose,onConfirm}:{course:any;onClose:()=>v
   const handleDelete=async()=>{
     setDeleting(true);
     try{
-      const res=await fetch(`http://localhost:8000/course/${course.course_id}`,{method:"DELETE"});
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`http://localhost:8000/course/id/${course.course_id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       if(!res.ok)throw new Error("Failed to delete");
       onConfirm();
     }catch(e){setDeleting(false);}
