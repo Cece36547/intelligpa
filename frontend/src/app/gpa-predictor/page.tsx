@@ -14,6 +14,21 @@ type RiskAnalysis = {
   completion_rate: number;
   message: string;
 };
+type SimulationResult = {
+  course_id: number;
+  course_name: string;
+  current_percentage: number;
+  simulated_percentage: number;
+  delta_percentage: number;
+  simulated_letter: string;
+  simulated_points: number;
+  categories: {
+    category_id: number;
+    category_name: string;
+    weight: number;
+    simulated_average: number | null;
+  }[];
+};
 
 const SCALE:Grade[]=[
   {letter:"A",min:93,points:4.0},{letter:"A-",min:90,points:3.7},
@@ -136,6 +151,8 @@ export default function Page(){
   const [goal,setGoal]=useState(3.5);
   const [username,setUsername]=useState("");
   const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
+  const [simulationResults, setSimulationResults] = useState<Record<number, SimulationResult | null>>({});
+  const [simulationLoading, setSimulationLoading] = useState<Record<number, boolean>>({});
 
   useEffect(()=>{
     setMounted(true);
@@ -210,6 +227,56 @@ export default function Page(){
       console.error("Needed score error:", err);
     } finally {
       setNeededLoading(false);
+    }
+  };
+  const runBackendSimulation = async (course: Course) => {
+    if (!username) return;
+
+    const hypotheticalScores = course.categories.flatMap(cat =>
+      cat.assignments
+        .filter(a => a.hypothetical !== null && a.hypothetical !== undefined)
+        .map(a => ({
+          assignment_id: a.assignment_id,
+          score: a.hypothetical,
+          max_score: a.max_score ?? 100,
+        }))
+    );
+
+    if (hypotheticalScores.length === 0) {
+      alert("Enter at least one hypothetical score first.");
+      return;
+    }
+
+    setSimulationLoading(prev => ({ ...prev, [course.course_id]: true }));
+
+    try {
+      const res = await fetch(
+        `http://localhost:8000/gpa/simulate/${username}/${course.course_id}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(hypotheticalScores),
+        }
+      );
+
+      if (!res.ok) {
+        alert("Simulation failed.");
+        return;
+      }
+
+      const data = await res.json();
+
+      setSimulationResults(prev => ({
+        ...prev,
+        [course.course_id]: data,
+      }));
+    } catch (err) {
+      console.error("Simulation error:", err);
+      alert("Error running simulation.");
+    } finally {
+      setSimulationLoading(prev => ({ ...prev, [course.course_id]: false }));
     }
   };
 
@@ -1265,6 +1332,25 @@ export default function Page(){
                     <div style={{width:4,height:20,borderRadius:3,flexShrink:0,
                       background:`linear-gradient(to bottom,${c.color},${c.color}44)`,boxShadow:`0 0 10px ${c.color}80`}}/>
                     <h3 style={{fontSize:14,fontWeight:700,flex:1}}>{c.course_name}</h3>
+                    <button
+                      onClick={() => runBackendSimulation(c)}
+                      disabled={simulationLoading[c.course_id]}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${c.color}55`,
+                        background: `${c.color}18`,
+                        color: c.color,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        cursor: simulationLoading[c.course_id] ? "not-allowed" : "pointer",
+                        fontFamily: "inherit",
+                        letterSpacing: ".04em",
+                        textTransform: "uppercase"
+                      }}
+                    >
+                      {simulationLoading[c.course_id] ? "Simulating..." : "Run Backend Simulation"}
+                    </button>
                     {anyHypo&&<span style={{fontSize:8,padding:"2px 8px",borderRadius:99,fontWeight:700,
                       letterSpacing:".12em",background:`${c.color}15`,border:`1px solid ${c.color}30`,color:c.color}}>EDITING</span>}
                     <div style={{display:"flex",alignItems:"center",gap:16}}>
@@ -1291,6 +1377,56 @@ export default function Page(){
                       )}
                     </div>
                   </div>
+                  {simulationResults[c.course_id] && (
+                    <div style={{
+                      margin: "14px 16px 0",
+                      padding: 16,
+                      borderRadius: 16,
+                      background: "rgba(15,23,42,.72)",
+                      border: `1px solid ${c.color}35`,
+                    }}>
+                      <div style={{fontSize:9,letterSpacing:".18em",textTransform:"uppercase",color:"rgba(148,163,184,1)",marginBottom:8}}>
+                        Backend Simulation Result
+                      </div>
+
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:14}}>
+                        <div>
+                          <div style={{fontSize:11,color:"rgba(100,116,139,1)"}}>Current</div>
+                          <div style={{fontSize:24,fontWeight:900,color:"white"}}>
+                            {simulationResults[c.course_id]?.current_percentage.toFixed(2)}%
+                          </div>
+                        </div>
+
+                        <div style={{fontSize:24,color:"rgba(100,116,139,1)"}}>→</div>
+
+                        <div>
+                          <div style={{fontSize:11,color:"rgba(100,116,139,1)"}}>Simulated</div>
+                          <div style={{fontSize:24,fontWeight:900,color:c.color}}>
+                            {simulationResults[c.course_id]?.simulated_percentage.toFixed(2)}%
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:11,color:"rgba(100,116,139,1)"}}>Delta</div>
+                          <div style={{
+                            fontSize:20,
+                            fontWeight:900,
+                            color: (simulationResults[c.course_id]?.delta_percentage ?? 0) >= 0 ? "#4ade80" : "#f87171"
+                          }}>
+                            {(simulationResults[c.course_id]?.delta_percentage ?? 0) >= 0 ? "+" : ""}
+                            {simulationResults[c.course_id]?.delta_percentage.toFixed(2)}%
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:11,color:"rgba(100,116,139,1)"}}>Letter</div>
+                          <div style={{fontSize:24,fontWeight:900,color:gc(simulationResults[c.course_id]?.simulated_letter ?? "F")}}>
+                            {simulationResults[c.course_id]?.simulated_letter}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {!ungraded.length?(
                     <div style={{padding:"14px 22px",color:"rgba(51,65,85,1)",fontSize:12,textAlign:"center"}}>All graded ✓</div>
                   ):(
