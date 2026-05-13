@@ -7,6 +7,13 @@ type Course={course_id:number;course_name:string;instructor:string;credits:numbe
 type Category={category_id:number;category_name:string;weight:number;assignments:Assign[];};
 type Assign={assignment_id:number;title:string;score:number|null;max_score:number;hypothetical?:number|null;};
 type Grade={letter:string;min:number;points:number;};
+type RiskAnalysis = {
+  risk_level: string;
+  confidence: string;
+  difference_from_goal: number | null;
+  completion_rate: number;
+  message: string;
+};
 
 const SCALE:Grade[]=[
   {letter:"A",min:93,points:4.0},{letter:"A-",min:90,points:3.7},
@@ -128,6 +135,7 @@ export default function Page(){
   const [target,setTarget]=useState(90);
   const [goal,setGoal]=useState(3.5);
   const [username,setUsername]=useState("");
+  const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
 
   useEffect(()=>{
     setMounted(true);
@@ -141,6 +149,7 @@ export default function Page(){
             .then(r => r.json())
             .then((data:any) => {
               const projectedCourses = data.projected_courses ?? [];
+              setRiskAnalysis(data.risk_analysis ?? null);
 
               setCourses(projectedCourses.map((c:any, i:number) => ({
                 course_id: c.course_id,
@@ -501,16 +510,68 @@ export default function Page(){
               </div>
 
               {/* Status pill */}
-              <div style={{padding:"10px 14px",borderRadius:12,display:"flex",alignItems:"center",gap:8,
-                background:onTrack?"rgba(74,222,128,.06)":"rgba(251,191,36,.06)",
-                border:`1px solid ${onTrack?"rgba(74,222,128,.18)":"rgba(251,191,36,.14)"}`}}>
-                <div style={{width:6,height:6,borderRadius:"50%",flexShrink:0,
-                  background:onTrack?"#4ade80":"#fbbf24",
-                  boxShadow:`0 0 7px ${onTrack?"#4ade80":"#fbbf24"}`}}/>
-                <span style={{fontSize:11,fontWeight:700,
-                  color:onTrack?"#4ade80":"#fbbf24",letterSpacing:".02em"}}>
-                  {onTrack?"On Track — Goal Reached":"In Progress"}
-                </span>
+              {/* Risk / Confidence card */}
+              <div style={{
+                padding: "12px 14px",
+                borderRadius: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                background: riskAnalysis?.risk_level === "High Risk"
+                  ? "rgba(248,113,113,.08)"
+                  : riskAnalysis?.risk_level === "Moderate Risk"
+                    ? "rgba(251,191,36,.08)"
+                    : "rgba(74,222,128,.06)",
+                border: riskAnalysis?.risk_level === "High Risk"
+                  ? "1px solid rgba(248,113,113,.22)"
+                  : riskAnalysis?.risk_level === "Moderate Risk"
+                    ? "1px solid rgba(251,191,36,.22)"
+                    : "1px solid rgba(74,222,128,.18)"
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background:
+                        riskAnalysis?.risk_level === "High Risk"
+                          ? "#f87171"
+                          : riskAnalysis?.risk_level === "Moderate Risk"
+                            ? "#fbbf24"
+                            : "#4ade80",
+                    }}
+                  />
+
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color:
+                        riskAnalysis?.risk_level === "High Risk"
+                          ? "#f87171"
+                          : riskAnalysis?.risk_level === "Moderate Risk"
+                            ? "#fbbf24"
+                            : "#4ade80",
+                      letterSpacing: ".02em",
+                    }}
+                  >
+                    {riskAnalysis ? riskAnalysis.risk_level : "Risk Pending"}
+                  </span>
+                </div>
+
+                {riskAnalysis && (
+                  <>
+                    <div style={{fontSize:10,color:"rgba(148,163,184,1)"}}>
+                      Confidence: <b style={{color:"white"}}>{riskAnalysis.confidence}</b>
+                    </div>
+
+                    <div style={{fontSize:10,color:"rgba(100,116,139,1)",lineHeight:1.45}}>
+                      {riskAnalysis.message}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
