@@ -29,6 +29,18 @@ type SimulationResult = {
     simulated_average: number | null;
   }[];
 };
+type PredictionResult = {
+  course_id: number;
+  course_name: string;
+  baseline_average_used: number;
+  simulations_run: number;
+  predicted_average: number;
+  most_likely_letter: string;
+  confidence: number;
+  probabilities: Record<string, number>;
+  current_projection: number;
+  explanation: string;
+};
 
 const SCALE:Grade[]=[
   {letter:"A",min:93,points:4.0},{letter:"A-",min:90,points:3.7},
@@ -153,6 +165,8 @@ export default function Page(){
   const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
   const [simulationResults, setSimulationResults] = useState<Record<number, SimulationResult | null>>({});
   const [simulationLoading, setSimulationLoading] = useState<Record<number, boolean>>({});
+  const [predictionResults, setPredictionResults] = useState<Record<number, PredictionResult | null>>({});
+  const [predictionLoading, setPredictionLoading] = useState<Record<number, boolean>>({});
 
   useEffect(()=>{
     setMounted(true);
@@ -279,7 +293,34 @@ export default function Page(){
       setSimulationLoading(prev => ({ ...prev, [course.course_id]: false }));
     }
   };
+  const runPrediction = async (course: Course) => {
+    if (!username) return;
 
+    setPredictionLoading(prev => ({ ...prev, [course.course_id]: true }));
+
+    try {
+      const res = await fetch(
+        `http://localhost:8000/gpa/predict/${username}/${course.course_id}?simulations=1000`
+      );
+
+      if (!res.ok) {
+        alert("Prediction failed.");
+        return;
+      }
+
+      const data = await res.json();
+
+      setPredictionResults(prev => ({
+        ...prev,
+        [course.course_id]: data,
+      }));
+    } catch (err) {
+      console.error("Prediction error:", err);
+      alert("Error running prediction.");
+    } finally {
+      setPredictionLoading(prev => ({ ...prev, [course.course_id]: false }));
+    }
+  };
 
   const upd=useCallback((cid:number,catId:number,aid:number,val:number|null)=>
     setCourses(p=>p.map(c=>c.course_id!==cid?c:{...c,categories:c.categories.map(cat=>cat.category_id!==catId?cat:{
@@ -1351,6 +1392,25 @@ export default function Page(){
                     >
                       {simulationLoading[c.course_id] ? "Simulating..." : "Run Backend Simulation"}
                     </button>
+                    <button
+                      onClick={() => runPrediction(c)}
+                      disabled={predictionLoading[c.course_id]}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(244,114,182,.45)",
+                        background: "rgba(244,114,182,.14)",
+                        color: "#f9a8d4",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        cursor: predictionLoading[c.course_id] ? "not-allowed" : "pointer",
+                        fontFamily: "inherit",
+                        letterSpacing: ".04em",
+                        textTransform: "uppercase"
+                      }}
+                    >
+                      {predictionLoading[c.course_id] ? "Predicting..." : "Run Prediction"}
+                    </button>
                     {anyHypo&&<span style={{fontSize:8,padding:"2px 8px",borderRadius:99,fontWeight:700,
                       letterSpacing:".12em",background:`${c.color}15`,border:`1px solid ${c.color}30`,color:c.color}}>EDITING</span>}
                     <div style={{display:"flex",alignItems:"center",gap:16}}>
@@ -1425,6 +1485,79 @@ export default function Page(){
                           </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+                  {predictionResults[c.course_id] && (
+                    <div style={{
+                      margin: "14px 16px 0",
+                      padding: 16,
+                      borderRadius: 16,
+                      background: "rgba(244,114,182,.08)",
+                      border: "1px solid rgba(244,114,182,.25)",
+                    }}>
+                      <div style={{
+                        fontSize: 9,
+                        letterSpacing: ".18em",
+                        textTransform: "uppercase",
+                        color: "rgba(249,168,212,1)",
+                        marginBottom: 10,
+                        fontWeight: 800
+                      }}>
+                        Monte Carlo Prediction
+                      </div>
+
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+                        <div>
+                          <div style={{fontSize:10,color:"rgba(148,163,184,1)"}}>Predicted Avg</div>
+                          <div style={{fontSize:24,fontWeight:900,color:"white"}}>
+                            {predictionResults[c.course_id]?.predicted_average.toFixed(2)}%
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:10,color:"rgba(148,163,184,1)"}}>Likely Letter</div>
+                          <div style={{fontSize:24,fontWeight:900,color:gc(predictionResults[c.course_id]?.most_likely_letter ?? "F")}}>
+                            {predictionResults[c.course_id]?.most_likely_letter}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:10,color:"rgba(148,163,184,1)"}}>Confidence</div>
+                          <div style={{fontSize:24,fontWeight:900,color:"#f9a8d4"}}>
+                            {predictionResults[c.course_id]?.confidence.toFixed(1)}%
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:10,color:"rgba(148,163,184,1)"}}>Runs</div>
+                          <div style={{fontSize:24,fontWeight:900,color:"white"}}>
+                            {predictionResults[c.course_id]?.simulations_run}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {Object.entries(predictionResults[c.course_id]?.probabilities ?? {}).map(([letter, pct]) => (
+                          <div key={letter}>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                              <span style={{fontSize:10,fontWeight:800,color:gc(letter)}}>{letter}</span>
+                              <span style={{fontSize:10,color:"rgba(148,163,184,1)"}}>{pct.toFixed(1)}%</span>
+                            </div>
+                            <div style={{height:5,borderRadius:999,background:"rgba(255,255,255,.06)",overflow:"hidden"}}>
+                              <div style={{
+                                height:"100%",
+                                width:`${pct}%`,
+                                borderRadius:999,
+                                background:gc(letter)
+                              }}/>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <p style={{fontSize:10,color:"rgba(148,163,184,.75)",lineHeight:1.5,marginTop:12}}>
+                        {predictionResults[c.course_id]?.explanation}
+                      </p>
                     </div>
                   )}
                   {!ungraded.length?(
