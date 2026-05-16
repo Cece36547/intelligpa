@@ -368,12 +368,35 @@ def monte_carlo_course_prediction(course, simulations: int = 1000) -> dict:
     - Treats ungraded work as uncertain future performance
     - Runs many simulated futures
     - Returns probability distribution of possible letter grades
+    - Adjusts confidence based on how much coursework is already graded
 
     No GPU or paid AI API required.
     """
 
     current_projection = project_course_percentage(course)
     baseline_average = current_projection["overall_known_average"]
+
+    # Track how much course weight already has real graded data
+    known_weight = 0.0
+    total_weight = 0.0
+
+    for category in course.categories:
+        total_weight += category.weight or 0
+
+        category_assignments = [
+            a for a in course.assignments
+            if a.category_id == category.category_id
+        ]
+
+        category_average = compute_category_average(category_assignments)
+
+        if category_average is not None:
+            known_weight += category.weight or 0
+
+    seed_value = f"{course.course_id}-" + "-".join(
+        f"{a.assignment_id}:{a.score}:{a.max_score}" for a in course.assignments
+    )
+    rng = random.Random(seed_value)
 
     # If there are no grades yet, use a neutral baseline
     if baseline_average == 0:
@@ -389,11 +412,7 @@ def monte_carlo_course_prediction(course, simulations: int = 1000) -> dict:
             if assignment.score is None:
                 max_score = assignment.max_score or 100
 
-                # Generate a realistic future score around the student's known average.
-                # Standard deviation controls uncertainty.
-                predicted_percent = random.gauss(baseline_average, 10)
-
-                # Clamp score between 0 and 100
+                predicted_percent = rng.gauss(baseline_average, 10)
                 predicted_percent = max(0, min(100, predicted_percent))
 
                 predicted_score = (predicted_percent / 100) * max_score
@@ -417,14 +436,25 @@ def monte_carlo_course_prediction(course, simulations: int = 1000) -> dict:
         else current_projection["projected_percentage"]
     )
 
-    most_likely_letter = max(letter_counts, key=letter_counts.get) if letter_counts else percentage_to_letter(predicted_average)
+    most_likely_letter = (
+        max(letter_counts, key=letter_counts.get)
+        if letter_counts
+        else percentage_to_letter(predicted_average)
+    )
 
     probabilities = {
         letter: round((count / simulations) * 100, 2)
         for letter, count in sorted(letter_counts.items())
     }
 
-    confidence = probabilities.get(most_likely_letter, 0)
+    base_confidence = probabilities.get(most_likely_letter, 0)
+
+    evidence_factor = known_weight / total_weight if total_weight > 0 else 0.0
+
+    adjusted_confidence = round(
+        base_confidence * (0.5 + (evidence_factor / 2)),
+        2
+    )
 
     return {
         "course_id": course.course_id,
@@ -433,10 +463,13 @@ def monte_carlo_course_prediction(course, simulations: int = 1000) -> dict:
         "simulations_run": simulations,
         "predicted_average": round(predicted_average, 2),
         "most_likely_letter": most_likely_letter,
-        "confidence": round(confidence, 2),
+        "confidence": adjusted_confidence,
+        "raw_confidence": round(base_confidence, 2),
+        "evidence_weight": round(known_weight, 2),
+        "evidence_factor": round(evidence_factor * 100, 2),
         "probabilities": probabilities,
         "current_projection": current_projection["projected_percentage"],
-        "explanation": "Prediction uses Monte Carlo simulation based on current graded performance and uncertainty around remaining ungraded assignments."
+        "explanation": "Prediction uses Monte Carlo simulation with evidence-weighted confidence based on how much coursework has already been graded."
     }
 
 def project_gpa(current_gpa: float, goal_gpa: float) -> dict:

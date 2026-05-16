@@ -1022,28 +1022,35 @@ export default function Page(){
                                         alert("Failed to update score");
                                         return;
                                       }
+                                      const refreshed = await fetch(`http://localhost:8000/gpa/project/${username}`);
+                                      const refreshedData = await refreshed.json();
 
-                                      setCourses(prev =>
-                                        prev.map(course =>
-                                          course.course_id !== c.course_id
-                                            ? course
-                                            : {
-                                                ...course,
-                                                categories: course.categories.map(category =>
-                                                  category.category_id !== cat.category_id
-                                                    ? category
-                                                    : {
-                                                        ...category,
-                                                        assignments: category.assignments.map(assign =>
-                                                          assign.assignment_id !== a.assignment_id
-                                                            ? assign
-                                                            : { ...assign, score }
-                                                        ),
-                                                      }
-                                                ),
-                                              }
-                                        )
-                                      );
+                                      setRiskAnalysis(refreshedData.risk_analysis ?? null);
+
+                                      const projectedCourses = refreshedData.projected_courses ?? [];
+
+                                      setCourses(projectedCourses.map((c:any, i:number) => ({
+                                        course_id: c.course_id,
+                                        course_name: c.course_name,
+                                        instructor: c.instructor ?? "",
+                                        credits: c.credits ?? 3,
+                                        color: PALETTE[i % PALETTE.length],
+                                        categories: (c.categories ?? []).map((cat:any) => ({
+                                          category_id: cat.category_id,
+                                          category_name: cat.category_name,
+                                          weight: cat.weight ?? 0,
+                                          assignments: (cat.assignments ?? []).map((a:any) => ({
+                                            assignment_id: a.assignment_id,
+                                            title: a.title ?? "Untitled",
+                                            score: a.score ?? null,
+                                            max_score: a.max_score ?? 100,
+                                            hypothetical: null,
+                                          })),
+                                        })),
+                                      })));
+
+                                      setSimulationResults({});
+                                      setPredictionResults({});
                                     } catch (err) {
                                       console.error(err);
                                       alert("Error updating score");
