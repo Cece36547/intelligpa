@@ -1,4 +1,5 @@
 from app.models.student import Student
+import random
 
 GRADE_POINTS = {
     "A": 4.0,
@@ -356,6 +357,86 @@ def simulate_course_what_if(course, hypothetical_scores: list[dict]) -> dict:
     "simulated_letter": simulated_letter,
     "simulated_points": GRADE_POINTS[simulated_letter],
     "categories": category_results,
+    }
+
+def monte_carlo_course_prediction(course, simulations: int = 1000) -> dict:
+    """
+    Predicts likely final course outcome using Monte Carlo simulation.
+
+    This is a lightweight statistical prediction layer:
+    - Uses real graded work as evidence
+    - Treats ungraded work as uncertain future performance
+    - Runs many simulated futures
+    - Returns probability distribution of possible letter grades
+
+    No GPU or paid AI API required.
+    """
+
+    current_projection = project_course_percentage(course)
+    baseline_average = current_projection["overall_known_average"]
+
+    # If there are no grades yet, use a neutral baseline
+    if baseline_average == 0:
+        baseline_average = 75.0
+
+    simulated_percentages = []
+    letter_counts = {}
+
+    for _ in range(simulations):
+        hypothetical_scores = []
+
+        for assignment in course.assignments:
+            if assignment.score is None:
+                max_score = assignment.max_score or 100
+
+                # Generate a realistic future score around the student's known average.
+                # Standard deviation controls uncertainty.
+                predicted_percent = random.gauss(baseline_average, 10)
+
+                # Clamp score between 0 and 100
+                predicted_percent = max(0, min(100, predicted_percent))
+
+                predicted_score = (predicted_percent / 100) * max_score
+
+                hypothetical_scores.append({
+                    "assignment_id": assignment.assignment_id,
+                    "score": predicted_score,
+                    "max_score": max_score
+                })
+
+        sim_result = simulate_course_what_if(course, hypothetical_scores)
+        simulated_percentage = sim_result["simulated_percentage"]
+        simulated_letter = sim_result["simulated_letter"]
+
+        simulated_percentages.append(simulated_percentage)
+        letter_counts[simulated_letter] = letter_counts.get(simulated_letter, 0) + 1
+
+    predicted_average = (
+        sum(simulated_percentages) / len(simulated_percentages)
+        if simulated_percentages
+        else current_projection["projected_percentage"]
+    )
+
+    most_likely_letter = max(letter_counts, key=letter_counts.get) if letter_counts else percentage_to_letter(predicted_average)
+
+    probabilities = {
+        letter: round((count / simulations) * 100, 2)
+        for letter, count in sorted(letter_counts.items())
+    }
+
+    confidence = probabilities.get(most_likely_letter, 0)
+
+    return {
+        "course_id": course.course_id,
+        "course_name": course.course_name,
+        "baseline_average_used": round(baseline_average, 2),
+        "simulations_run": simulations,
+        "predicted_average": round(predicted_average, 2),
+        "most_likely_letter": most_likely_letter,
+        "confidence": round(confidence, 2),
+        "probabilities": probabilities,
+        "current_projection": current_projection["projected_percentage"],
+        "explanation": "Prediction uses Monte Carlo simulation based on current graded performance and uncertainty around remaining ungraded assignments."
     }
 
 def project_gpa(current_gpa: float, goal_gpa: float) -> dict:

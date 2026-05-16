@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.student import Student
-from app.services.gpa_service import calculate_term_gpa, project_student_gpa, needed_average_for_target, simulate_course_what_if
+from app.services.gpa_service import calculate_term_gpa, project_student_gpa, needed_average_for_target, simulate_course_what_if, monte_carlo_course_prediction
 from app.models.course import Course
 from pydantic import BaseModel, Field
 
@@ -93,3 +93,39 @@ def simulate_what_if(
     course,
     [score.model_dump() for score in hypothetical_scores]
 )
+
+@router.get("/predict/{student_user_name}/{course_id}")
+def predict_course_outcome(
+    student_user_name: str,
+    course_id: int,
+    simulations: int = 1000,
+    db: Session = Depends(get_db)
+):
+    student = (
+        db.query(Student)
+        .filter(Student.student_user_name == student_user_name)
+        .first()
+    )
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    course = (
+        db.query(Course)
+        .filter(
+            Course.course_id == course_id,
+            Course.student_user_name == student_user_name
+        )
+        .first()
+    )
+
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    if simulations < 100:
+        simulations = 100
+
+    if simulations > 5000:
+        simulations = 5000
+
+    return monte_carlo_course_prediction(course, simulations)
