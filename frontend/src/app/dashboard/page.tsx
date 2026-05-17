@@ -32,14 +32,16 @@ const ParticleCanvas = memo(function ParticleCanvas() {
     const ctx = canvas.getContext("2d"); if(!ctx) return;
     let w = canvas.width = window.innerWidth;
     let h = canvas.height = window.innerHeight;
-    const pts = Array.from({length:80},()=>({
+    const pts = Array.from({length:35},()=>({
       x:Math.random()*w, y:Math.random()*h,
       r:Math.random()*2+.5, dx:(Math.random()-.5)*.8, dy:(Math.random()-.5)*.8,
     }));
     let raf: number;
     function draw() {
       if(!ctx) return;
-      ctx.fillStyle="rgba(7,6,15,0.25)"; ctx.fillRect(0,0,w,h);
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle="rgba(7,6,15,0.18)";
+      ctx.fillRect(0,0,w,h);
       for(let i=0;i<pts.length;i++){
         const p=pts[i]; p.x+=p.dx; p.y+=p.dy;
         if(p.x>w||p.x<0)p.dx*=-1; if(p.y>h||p.y<0)p.dy*=-1;
@@ -328,7 +330,7 @@ useEffect(()=>{
 
   return(
     <div style={{minHeight:"100vh",background:"#07060f",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",color:"white",position:"relative"}}>
-      <ParticleCanvas/>
+      {user && <ParticleCanvas />}
 
       {/* NAV */}
       <nav style={{position:"sticky",top:0,zIndex:50,backdropFilter:"blur(24px)",background:"rgba(7,6,15,.85)",borderBottom:"1px solid rgba(255,255,255,.06)"}}>

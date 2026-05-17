@@ -131,50 +131,78 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || loading) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
+    let raf = 0;
 
-    const pts = Array.from({ length: 120 }, () => ({
+    const pts = Array.from({ length: 35 }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      r: Math.random() * 3 + 1,
-      dx: (Math.random() - 0.5) * 1.2,
-      dy: (Math.random() - 0.5) * 1.2,
+      r: Math.random() * 2 + 0.5,
+      dx: (Math.random() - 0.5) * 0.5,
+      dy: (Math.random() - 0.5) * 0.5,
     }));
 
     function draw() {
-      if (!ctx) return;
-      ctx.fillStyle = "rgba(10,10,30,0.2)";
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "rgba(10,10,30,0.14)";
       ctx.fillRect(0, 0, width, height);
-      pts.forEach((p, i) => {
-        p.x += p.dx; p.y += p.dy;
+
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        p.x += p.dx;
+        p.y += p.dy;
+
         if (p.x > width || p.x < 0) p.dx *= -1;
         if (p.y > height || p.y < 0) p.dy *= -1;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.fill();
-        pts.slice(i + 1).forEach((q) => {
-          const d = Math.hypot(p.x - q.x, p.y - q.y);
-          if (d < 150) {
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.25)";
+        ctx.fill();
+
+        for (let j = i + 1; j < pts.length; j++) {
+          const q = pts[j];
+          const dx = p.x - q.x;
+          const dy = p.y - q.y;
+          const d2 = dx * dx + dy * dy;
+
+          if (d2 < 10000) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(100,150,255,${0.2 * (1 - d / 150)})`;
-            ctx.shadowBlur = 10; ctx.shadowColor = "rgba(100,150,255,0.2)";
-            ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+            ctx.strokeStyle = "rgba(100,150,255,0.08)";
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(q.x, q.y);
+            ctx.stroke();
           }
-        });
-      });
-      requestAnimationFrame(draw);
+        }
+      }
+
+      raf = requestAnimationFrame(draw);
     }
+
     draw();
-    const onResize = () => { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; };
+
+    const onResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [mounted]);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [mounted, loading]);
 
   if (!mounted) return null;
 
@@ -183,7 +211,9 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-black via-purple-900 to-indigo-900 px-4">
-      <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+      {!loading && (
+        <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+      )}
 
       <div className="absolute w-12 h-12 rounded-full bg-pink-500/40 animate-bounce-slow top-16 left-10 shadow-[0_0_30px_rgba(255,192,203,0.5)]" />
       <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16 shadow-[0_0_40px_rgba(123,104,238,0.4)]" />

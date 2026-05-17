@@ -88,19 +88,71 @@ export default function ProfilePage() {
 
   useEffect(() => {
     setMounted(true);
-    const u=localStorage.getItem("student_user_name")??"";
-    const g=localStorage.getItem("goal_gpa"), c=localStorage.getItem("current_gpa");
-    setUsername(u);
-    if(g){setGoalGpa(parseFloat(g));setNewGoal(parseFloat(g));}
-    if(c) setCurrentGpa(parseFloat(c));
-    const unsub=onAuthStateChanged(auth,usr=>{
-      if(!usr){router.push("/login");return;}
+
+    const unsub = onAuthStateChanged(auth, async (usr) => {
+      if (!usr) {
+        router.push("/login");
+        return;
+      }
+
       setUser(usr);
-      if(usr.metadata.creationTime) setMemberSince(new Date(usr.metadata.creationTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}));
+
+      if (usr.metadata.creationTime) {
+        setMemberSince(
+          new Date(usr.metadata.creationTime).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        );
+      }
+
+      const token = await usr.getIdToken();
+
+      try {
+        const studentRes = await fetch("http://localhost:8000/student/", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (studentRes.ok) {
+          const studentData = await studentRes.json();
+
+          if (studentData.student_user_name) {
+            setUsername(studentData.student_user_name);
+            localStorage.setItem("student_user_name", studentData.student_user_name);
+          }
+
+          if (studentData.current_gpa != null) {
+            setCurrentGpa(Number(studentData.current_gpa));
+            localStorage.setItem("current_gpa", String(studentData.current_gpa));
+          }
+
+          if (studentData.goal_gpa != null) {
+            setGoalGpa(Number(studentData.goal_gpa));
+            setNewGoal(Number(studentData.goal_gpa));
+            localStorage.setItem("goal_gpa", String(studentData.goal_gpa));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch student profile:", err);
+      }
+
+      try {
+        const courseRes = await fetch("http://localhost:8000/course/", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (courseRes.ok) {
+          const courseData = await courseRes.json();
+          setCourses(Array.isArray(courseData) ? courseData : []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch courses:", err);
+      }
     });
-    if(u) fetch(`http://localhost:8000/course/course/${u}`).then(r=>r.json()).then(d=>setCourses(Array.isArray(d)?d:[])).catch(()=>{});
-    return ()=>unsub();
-  },[router]);
+
+    return () => unsub();
+  }, [router]);
 
   const handleLogout=async()=>{await signOut(auth);localStorage.clear();router.push("/login");};
   const handleSaveGoal=()=>{setGoalGpa(newGoal);localStorage.setItem("goal_gpa",String(newGoal));setEditGoal(false);};
