@@ -50,7 +50,7 @@ def calculate_term_gpa(courses: list[dict]) -> float:
     return round(total_points / total_credits, 2)
 
 
-def compute_category_average(assignments: list) -> float | None:
+def compute_category_average(assignments: list) -> float:
     graded = [
         a for a in assignments
         if a.score is not None and a.max_score is not None and a.max_score > 0

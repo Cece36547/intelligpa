@@ -176,7 +176,7 @@ export default function Page(){
       const unsub=auth.onAuthStateChanged(user=>{
         unsub();if(!user){setLoading(false);return;}
         user.getIdToken().then(token=>{
-          fetch(`http://localhost:8000/gpa/project/${u}`)
+          fetch(`http://localhost:8000/gpa/project`, {headers: {Authorization: `Bearer ${token}`}})
             .then(r => r.json())
             .then((data:any) => {
               const projectedCourses = data.projected_courses ?? [];
@@ -231,8 +231,10 @@ export default function Page(){
     setNeededLoading(true);
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/gpa/needed/${username}/${selCourse.course_id}?target=${target}`
+      const { auth } = await import("@/lib/firebase");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`http://localhost:8000/gpa/needed/${selCourse.course_id}?target=${target}`, 
+        { headers: { Authorization: `Bearer ${token}` }}
       );
 
       const data = await res.json();
@@ -264,16 +266,16 @@ export default function Page(){
     setSimulationLoading(prev => ({ ...prev, [course.course_id]: true }));
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/gpa/simulate/${username}/${course.course_id}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(hypotheticalScores),
-        }
-      );
+      const { auth } = await import("@/lib/firebase");
+const token = await auth.currentUser?.getIdToken();
+const res = await fetch(
+  `http://localhost:8000/gpa/simulate/${course.course_id}`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(hypotheticalScores),
+  }
+    );
 
       if (!res.ok) {
         alert("Simulation failed.");
@@ -299,9 +301,11 @@ export default function Page(){
     setPredictionLoading(prev => ({ ...prev, [course.course_id]: true }));
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/gpa/predict/${username}/${course.course_id}?simulations=1000`
-      );
+      const { auth } = await import("@/lib/firebase");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`http://localhost:8000/gpa/predict/${course.course_id}?simulations=1000`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
       if (!res.ok) {
         alert("Prediction failed.");
@@ -998,19 +1002,20 @@ export default function Page(){
                                   const ap=a.score!=null?(a.score/a.max_score)*100:null;
                                   const sc=ap!=null?(ap>=90?"#4ade80":ap>=70?"#fbbf24":"#f87171"):null;
 
-                                  const saveScore = async () => {
-                                    const input = document.getElementById(`score-${a.assignment_id}`) as HTMLInputElement;
+                                  const saveScore = async (course: Course, assignmentTitle: string, assignmentId: number, maxScore: number) => {
+                                    const input = document.getElementById(`score-${assignmentId}`) as HTMLInputElement;
                                     const value = input?.value;
 
                                     if (value === "" || value == null) return;
 
                                     const score = Number(value);
-
+                                    const {auth} = await import('@/lib/firebase');
+                                    const token = await auth.currentUser?.getIdToken()
                                     try {
-                                      const res = await fetch(`http://localhost:8000/assignment/${a.assignment_id}/score`, {
+                                      const res = await fetch(`http://localhost:8000/assignment/${encodeURIComponent(course.course_name)}/${encodeURIComponent(assignmentTitle)}`, {
                                         method: "PUT",
                                         headers: {
-                                          "Content-Type": "application/json",
+                                          "Content-Type": "application/json", Authorization: `Bearer ${token}`,
                                         },
                                         body: JSON.stringify({
                                           score,
@@ -1093,7 +1098,7 @@ export default function Page(){
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              saveScore();
+                                              saveScore(c, a.title, a.assignment_id, a.max_score);
                                             }}
                                             style={{
                                               height: 34,

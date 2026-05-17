@@ -167,9 +167,11 @@ function EditCourseModal({course,onClose,onSuccess}:{course:any;onClose:()=>void
   const handleSave=async()=>{
     setSaving(true);setError("");
     try{
-      const res=await fetch(`http://localhost:8000/course/${course.course_id}`,{
-        method:"PUT",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({course_name:name,instructor,credits}),
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`http://localhost:8000/course/${course.course_id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({course_name: name, instructor, credits}),
       });
       if(!res.ok)throw new Error("Failed to update course");
       const updated=await res.json();
@@ -227,7 +229,7 @@ function DeleteConfirmModal({course,onClose,onConfirm}:{course:any;onClose:()=>v
     setDeleting(true);
     try{
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(`http://localhost:8000/course/id/${course.course_id}`, {
+      const res = await fetch(`http://localhost:8000/course/${course.course_id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -279,16 +281,7 @@ useEffect(()=>{
   const unsub=onAuthStateChanged(auth, async (u)=>{
     if(!u){ router.push("/login"); return; }
     setUser(u);
-    
-    const username = localStorage.getItem("student_user_name");
-    
-    // Auto-link firebase_uid to student record
-    if(username && u.uid) {
-      fetch(`http://localhost:8000/student/${username}/firebase?firebase_uid=${u.uid}&email=${encodeURIComponent(u.email ?? "")}`, {
-        method: "PUT"
-      }).catch(() => {});
-    }
-    
+
     const token = await u.getIdToken();
     
     // Fetch student profile (GPA etc)

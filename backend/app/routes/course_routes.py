@@ -1,8 +1,6 @@
 from datetime import datetime
-
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from sqlalchemy.orm import Session
-
 from app.database.db import get_db
 from app.firebase_auth import verify_firebase_token
 from app.models.assignment import Assignment
@@ -14,13 +12,8 @@ from app.services.syllabus_service import process_syllabus
 
 router = APIRouter(prefix="/course", tags=["Course"])
 
-
 @router.post("/", response_model=courseResponse)
-async def addCourse(
-    user=Depends(verify_firebase_token),
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
+async def addCourse(user=Depends(verify_firebase_token),file: UploadFile = File(...),db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
 
     if student is None:
@@ -113,7 +106,6 @@ async def addCourse(
 
     db.commit()
     db.refresh(new_course)
-
     return new_course
 
 
@@ -138,70 +130,39 @@ def getClass(user=Depends(verify_firebase_token), db: Session = Depends(get_db))
 def updateCourseRoute(
     course_id: int,
     update: updateCourse,
+    user=Depends(verify_firebase_token),
     db: Session = Depends(get_db),
 ):
-    course = db.query(Course).filter(Course.course_id == course_id).first()
+    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
 
+    course = db.query(Course).filter(Course.course_id == course_id, Course.student_user_name == student.student_user_name)  # scoped to their courses only).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
     if update.course_name is not None:
         course.course_name = update.course_name
-
     if update.instructor is not None:
         course.instructor = update.instructor
-
     if update.credits is not None:
         course.credits = update.credits
 
     db.commit()
     db.refresh(course)
-
     return course
 
-@router.delete("/id/{course_id}")
-def deleteCourseById(
-    course_id: int,
-    user=Depends(verify_firebase_token),
-    db: Session = Depends(get_db)
-):
+@router.delete("/{course_id}")
+def deleteClass(course_id: int, user=Depends(verify_firebase_token), db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
-
-    if student is None:
+    if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-
     course = db.query(Course).filter(
         Course.course_id == course_id,
         Course.student_user_name == student.student_user_name
     ).first()
-
-    if course is None:
+    if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-
     db.delete(course)
     db.commit()
-
     return {"message": f"Course {course_id} deleted successfully"}
-@router.delete("/{course_name}")
-def deleteClass(
-    course_name: str,
-    user=Depends(verify_firebase_token),
-    db: Session = Depends(get_db),
-):
-    student = db.query(Student).filter(Student.firebase_uid == user["uid"]).first()
-
-    if student is None:
-        raise HTTPException(status_code=404, detail="Student not found")
-
-    course = db.query(Course).filter(
-        Course.student_user_name == student.student_user_name,
-        Course.course_name == course_name,
-    ).first()
-
-    if course is None:
-        raise HTTPException(status_code=404, detail="Course not found")
-
-    db.delete(course)
-    db.commit()
-
-    return {"message": f"Course {course_name} deleted successfully"}
