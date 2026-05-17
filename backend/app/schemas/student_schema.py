@@ -21,11 +21,13 @@ class StudentCreate(BaseModel):
     
     
 class StudentResponse(BaseModel): 
-    model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj
+    model_config = ConfigDict(from_attributes=True)
     current_gpa: Optional[float]
     created_at: datetime
     student_user_name: str
     goal_gpa: float
+    email: Optional[str] = None
+    firebase_uid: Optional[str] = None
 
 class StudentUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True) #Allows Pydantic read directly from SQLAlchemy obj

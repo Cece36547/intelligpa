@@ -129,39 +129,50 @@ export default function SignUpPage() {
   };
 
   const handleFinish = async () => {
-    if (!goalGpa) return;
-    setProfileLoading(true);
-    try {
-      localStorage.setItem("student_user_name", username);
-      if (currentGpa !== null) localStorage.setItem("current_gpa", String(currentGpa));
-      if (goalGpa !== null) localStorage.setItem("goal_gpa", String(goalGpa));
+  if (!goalGpa) return;
+  setProfileLoading(true);
 
-      const firebaseUser = auth.currentUser // get current firebase user
-      // Try to save to backend — but don't block on failure
-      try {
-        const res = await fetch("http://localhost:8000/student/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            student_user_name: username,
-            current_gpa: currentGpa,
-            goal_gpa: goalGpa,
-            email: firebaseUser?.email, //
-            firebase_uid: firebaseUser?.uid
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          console.warn("Backend error:", err.detail);
-        }
-      } catch {
-        console.warn("Backend offline — profile saved locally only.");
-      }
+  try {
+    const firebaseUser = auth.currentUser;
 
-      router.push("/dashboard");
-    } catch (err) { setMessage("Something went wrong. Please try again."); }
-    finally { setProfileLoading(false); }
-  };
+    if (!firebaseUser) {
+      setMessage("No Firebase user found. Please sign up again.");
+      return;
+    }
+
+    const token = await firebaseUser.getIdToken();
+
+    const res = await fetch("http://localhost:8000/student/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        student_user_name: username,
+        current_gpa: currentGpa,
+        goal_gpa: goalGpa,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to save profile.");
+    }
+
+    const data = await res.json();
+
+    localStorage.setItem("student_user_name", data.student_user_name);
+    if (data.current_gpa !== null) localStorage.setItem("current_gpa", String(data.current_gpa));
+    if (data.goal_gpa !== null) localStorage.setItem("goal_gpa", String(data.goal_gpa));
+
+    router.push("/dashboard");
+  } catch (err: any) {
+    setMessage(err.message || "Something went wrong. Please try again.");
+  } finally {
+    setProfileLoading(false);
+  }
+};
 
   // Particles — only runs once on mount
   useEffect(() => {

@@ -16,7 +16,6 @@ const AVATARS = ["🦊","🐼","🦋","🐸","🦄","🐙","🦩","🐬","🦁",
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -42,58 +41,20 @@ export default function LoginPage() {
       : null;
 
   // Fetch student profile using Firebase display name (username)
-  const loadProfile = async (displayName: string | null) => {
-    try {
-      const username = displayName || localStorage.getItem("student_user_name");
-      if (!username) return;
-      localStorage.setItem("student_user_name", username);
-      const res = await fetch(`http://localhost:8000/student/${username}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.current_gpa != null)
-          localStorage.setItem("current_gpa", String(data.current_gpa));
-        if (data.goal_gpa != null)
-          localStorage.setItem("goal_gpa", String(data.goal_gpa));
-      }
-    } catch {
-      console.warn("Could not fetch profile from backend.");
-    }
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
     setLoading(true);
 
-    let loginEmail = email;
-
     if (!email.includes("@")) {
-      try {
-        const res = await fetch(
-          `http://localhost:8000/student/${encodeURIComponent(email)}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (data.student_user_name)
-            localStorage.setItem("student_user_name", data.student_user_name);
-          if (data.current_gpa != null)
-            localStorage.setItem("current_gpa", String(data.current_gpa));
-          if (data.goal_gpa != null)
-            localStorage.setItem("goal_gpa", String(data.goal_gpa));
-          setMessage("Now enter your email and password to sign in.");
-        } else {
-          setMessage("Username not found. Try email instead.");
-        }
-      } catch {
-        setMessage("Could not reach server. Please use email.");
-      }
+      setMessage("Please enter your email address to sign in.");
       setLoading(false);
       return;
     }
 
     try {
-      const cred = await signInWithEmailAndPassword(auth, loginEmail, password);
-      await loadProfile(cred.user.displayName);
+      await signInWithEmailAndPassword(auth, email, password);
       router.push("/dashboard");
     } catch (error: any) {
       setMessage(cleanError(error.message));
@@ -108,9 +69,10 @@ export default function LoginPage() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      const cred = await signInWithPopup(auth, provider);
-      await loadProfile(cred.user.displayName);
+      await signInWithPopup(auth, provider);
       router.push("/dashboard");
+    } catch (error: any) {
+      setMessage(cleanError(error.message));
     } finally {
       setLoading(false);
     }
@@ -122,9 +84,10 @@ export default function LoginPage() {
     try {
       const provider = new OAuthProvider("microsoft.com");
       provider.setCustomParameters({ tenant: "common", prompt: "select_account" });
-      const cred = await signInWithPopup(auth, provider);
-      await loadProfile(cred.user.displayName);
+      await signInWithPopup(auth, provider);
       router.push("/dashboard");
+    } catch (error: any) {
+      setMessage(cleanError(error.message));
     } finally {
       setLoading(false);
     }
@@ -152,6 +115,7 @@ export default function LoginPage() {
     }));
 
     function draw() {
+      if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = "rgba(10,10,30,0.14)";
       ctx.fillRect(0, 0, width, height);
@@ -245,8 +209,8 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
-          <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email or username" />
-          <input className={inputCls} type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
+          <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
+          <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
           <button type="submit" disabled={loading}
             className="w-full rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white p-3 font-semibold shadow-lg">
             {loading ? "Signing in..." : "Sign In →"}
