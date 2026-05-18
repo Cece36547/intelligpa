@@ -183,10 +183,11 @@ export default function SignUpPage() {
     if (!ctx) return;
     let w = (canvas.width = window.innerWidth);
     let h = (canvas.height = window.innerHeight);
-    const pts = Array.from({ length: 120 }, () => ({
+    const pts = Array.from({ length: 35 }, () => ({
       x: Math.random() * w, y: Math.random() * h,
       r: Math.random() * 3 + 1,
-      dx: (Math.random() - 0.5) * 1.2, dy: (Math.random() - 0.5) * 1.2,
+      dx: (Math.random() - 0.5) * 0.35,
+      dy: (Math.random() - 0.5) * 0.35,
     }));
     let raf: number;
     function draw() {
@@ -200,10 +201,10 @@ export default function SignUpPage() {
         ctx!.fillStyle = "rgba(255,255,255,0.4)"; ctx!.fill();
         pts.slice(i + 1).forEach(q => {
           const d = Math.hypot(p.x - q.x, p.y - q.y);
-          if (d < 150) {
+          if (d < 90) {
             ctx!.beginPath();
             ctx!.strokeStyle = `rgba(100,150,255,${0.2 * (1 - d / 150)})`;
-            ctx!.shadowBlur = 10; ctx!.shadowColor = "rgba(100,150,255,0.2)";
+            ctx!.shadowBlur = 0;
             ctx!.moveTo(p.x, p.y); ctx!.lineTo(q.x, q.y); ctx!.stroke();
           }
         });
@@ -229,7 +230,7 @@ export default function SignUpPage() {
       <div className="absolute w-20 h-20 rounded-full bg-indigo-500/30 animate-bounce-slow bottom-32 right-16 shadow-[0_0_40px_rgba(123,104,238,0.4)]" />
       <div className="absolute w-6 h-6 rounded-full bg-cyan-400/50 animate-bounce-slow top-40 right-28 shadow-[0_0_25px_rgba(0,255,255,0.5)]" />
 
-      <div className="relative backdrop-blur-3xl bg-white/5 border border-white/20 rounded-3xl p-10 max-w-md w-full shadow-3xl animate-float-card">
+      <div className="relative backdrop-blur-xl bg-white/5 border border-white/20 rounded-3xl p-10 max-w-md w-full shadow-3xl">
 
         {/* Progress bar */}
         <div className="mb-8">

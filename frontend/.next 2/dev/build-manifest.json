@@ -1,0 +1,25 @@
+{
+  "pages": {
+    "/_app": []
+  },
+  "devFiles": [],
+  "polyfillFiles": [
+    "static/chunks/b69f1_next_dist_build_polyfills_polyfill-nomodule.js"
+  ],
+  "lowPriorityFiles": [
+    "static/development/_ssgManifest.js",
+    "static/development/_buildManifest.js"
+  ],
+  "rootMainFiles": [
+    "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_ffe41664._.js",
+    "static/chunks/b69f1_next_dist_compiled_react-dom_8f9cc235._.js",
+    "static/chunks/b69f1_next_dist_compiled_react-server-dom-turbopack_5057bcec._.js",
+    "static/chunks/b69f1_next_dist_compiled_next-devtools_index_a1003400.js",
+    "static/chunks/b69f1_next_dist_compiled_f49a8abc._.js",
+    "static/chunks/b69f1_next_dist_client_3f3037e0._.js",
+    "static/chunks/b69f1_next_dist_03a4ce60._.js",
+    "static/chunks/b69f1_@swc_helpers_cjs_2f1b07b3._.js",
+    "static/chunks/Desktop_intelligpa_frontend_a0ff3932._.js",
+    "static/chunks/turbopack-Desktop_intelligpa_frontend_84827d04._.js"
+  ]
+}
