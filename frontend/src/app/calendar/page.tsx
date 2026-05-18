@@ -757,9 +757,16 @@ export default function CalendarPage() {
 
               const merged = mapped.map(a => {
                 const local = savedMap.get(a.id);
+                // If a grade was entered in the GPA predictor, auto-complete the assignment
+                // unless the user has explicitly set a non-default status locally
+                const hasGrade = a.score != null && a.max_score != null && a.max_score > 0;
+                const localStatus = local?.status;
+                const autoStatus = hasGrade && (!localStatus || localStatus === "not_started")
+                  ? "completed"
+                  : (localStatus ?? a.status);
                 return {
                   ...a,
-                  status: local?.status ?? a.status,
+                  status: autoStatus,
                   priority: local?.priority ?? a.priority,
                   notes: local?.notes ?? a.notes,
                   // Always use backend score — it's authoritative
@@ -838,9 +845,16 @@ export default function CalendarPage() {
 
                   const merged = mapped.map(a => {
                     const local = savedMap.get(a.id);
+                    // If a grade was entered in the GPA predictor, auto-complete the assignment
+                    // unless the user has explicitly set a non-default status locally
+                    const hasGrade = a.score != null && a.max_score != null && a.max_score > 0;
+                    const localStatus = local?.status;
+                    const autoStatus = hasGrade && (!localStatus || localStatus === "not_started")
+                      ? "completed"
+                      : (localStatus ?? a.status);
                     return {
                       ...a,
-                      status: local?.status ?? a.status,
+                      status: autoStatus,
                       priority: local?.priority ?? a.priority,
                       notes: local?.notes ?? a.notes,
                       score: a.score,
@@ -921,7 +935,11 @@ export default function CalendarPage() {
     setAssignments(prev => { const u = prev.filter(x => x.id !== id); saveLocal(u); return u; });
   };
   const handleSaveEdit = (updated: Assignment) => {
-    setAssignments(prev => { const u = prev.map(x => x.id === updated.id ? updated : x); saveLocal(u); return u; });
+    // Auto-complete if a grade was entered and status is still not_started
+    const hasGrade = updated.score != null && updated.max_score != null && updated.max_score > 0;
+    const finalStatus = hasGrade && updated.status === "not_started" ? "completed" : updated.status;
+    const finalAssignment = { ...updated, status: finalStatus };
+    setAssignments(prev => { const u = prev.map(x => x.id === finalAssignment.id ? finalAssignment : x); saveLocal(u); return u; });
     setEditAssignment(null);
   };
 
