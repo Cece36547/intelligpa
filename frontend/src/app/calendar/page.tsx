@@ -63,12 +63,23 @@ function isToday(year: number, month: number, day: number) {
   return t.getFullYear() === year && t.getMonth() === month && t.getDate() === day;
 }
 function daysUntil(dateStr: string) {
+  if (!dateStr || dateStr === "undated") return 999; // undated = sort to end
   const today = new Date(); today.setHours(0,0,0,0);
   return Math.ceil((new Date(dateStr).getTime() - today.getTime()) / 86400000);
 }
 function todayStr() {
   const t = new Date();
   return toDateStr(t.getFullYear(), t.getMonth(), t.getDate());
+}
+
+function guessType(title: string): Assignment["type"] {
+  const t = title.toLowerCase();
+  if (t.includes("quiz")) return "quiz";
+  if (t.includes("exam") || t.includes("midterm") || t.includes("final")) return "exam";
+  if (t.includes("project")) return "project";
+  if (t.includes("lab")) return "lab";
+  if (t.includes("hw") || t.includes("homework")) return "homework";
+  return "other";
 }
 
 function AddAssignmentModal({ courses, defaultDate, onClose, onAdd }: {
@@ -205,7 +216,11 @@ function AddAssignmentModal({ courses, defaultDate, onClose, onAdd }: {
   );
 }
 
-function EditAssignmentModal({ assignment, onClose, onSave }: {
+function EditAssignmentModal({
+  assignment,
+  onClose,
+  onSave,
+}: {
   assignment: Assignment;
   onClose: () => void;
   onSave: (updated: Assignment) => void;
@@ -214,95 +229,439 @@ function EditAssignmentModal({ assignment, onClose, onSave }: {
   const [dueDate, setDueDate] = useState(assignment.due_date);
   const [type, setType] = useState(assignment.type);
   const [status, setStatus] = useState(assignment.status);
-  const [priority, setPriority] = useState<AssignmentPriority>(assignment.priority ?? "medium");
-  const [score, setScore] = useState(assignment.score != null ? String(assignment.score) : "");
-  const [maxScore, setMaxScore] = useState(assignment.max_score != null ? String(assignment.max_score) : "");
+  const [priority, setPriority] = useState<AssignmentPriority>(
+    assignment.priority ?? "medium"
+  );
+  const [score, setScore] = useState(
+    assignment.score != null ? String(assignment.score) : ""
+  );
+  const [maxScore, setMaxScore] = useState(
+    assignment.max_score != null ? String(assignment.max_score) : ""
+  );
   const [notes, setNotes] = useState(assignment.notes ?? "");
 
-  const inputCls = "w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none focus:border-purple-400/50 transition-colors";
+  const inputCls =
+    "w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none focus:border-purple-400/50 transition-colors";
+
   const tc = TYPE_COLORS[type];
 
   return (
-    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,overflowY:"auto"}}>
-      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(16px)"}}/>
-      <div style={{position:"relative",width:"100%",maxWidth:500,background:"linear-gradient(135deg,rgba(79,70,229,.15),rgba(7,6,15,.99))",border:`1px solid ${tc}30`,borderRadius:24,boxShadow:`0 40px 100px rgba(0,0,0,.9),0 0 40px ${tc}15`,margin:"auto"}}>
-        <div style={{height:2,background:`linear-gradient(90deg,transparent,${tc},transparent)`,borderRadius:"24px 24px 0 0"}}/>
-        <div style={{padding:"28px 32px",display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <h2 style={{fontSize:19,fontWeight:800,color:"white",margin:0}}>Edit Assignment</h2>
-            <button onClick={onClose} style={{width:28,height:28,borderRadius:7,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(156,163,175,1)",fontSize:13,cursor:"pointer"}}>✕</button>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        overflowY: "auto",
+      }}
+    >
+      <div
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(0,0,0,.8)",
+          backdropFilter: "blur(16px)",
+        }}
+      />
+
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          maxWidth: 500,
+          background:
+            "linear-gradient(135deg,rgba(79,70,229,.15),rgba(7,6,15,.99))",
+          border: `1px solid ${tc}30`,
+          borderRadius: 24,
+          boxShadow: `0 40px 100px rgba(0,0,0,.9),0 0 40px ${tc}15`,
+          margin: "auto",
+        }}
+      >
+        <div
+          style={{
+            height: 2,
+            background: `linear-gradient(90deg,transparent,${tc},transparent)`,
+            borderRadius: "24px 24px 0 0",
+          }}
+        />
+
+        <div
+          style={{
+            padding: "28px 32px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 19,
+                fontWeight: 800,
+                color: "white",
+                margin: 0,
+              }}
+            >
+              Edit Assignment
+            </h2>
+
+            <button
+              onClick={onClose}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 7,
+                background: "rgba(255,255,255,.06)",
+                border: "1px solid rgba(255,255,255,.1)",
+                color: "rgba(156,163,175,1)",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
           </div>
+
           <div>
-            <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Title</div>
-            <input className={inputCls} value={title} onChange={e => setTitle(e.target.value)} autoFocus/>
+            <div
+              style={{
+                fontSize: 9,
+                color: "rgba(75,85,99,1)",
+                textTransform: "uppercase",
+                letterSpacing: ".12em",
+                marginBottom: 5,
+              }}
+            >
+              Title
+            </div>
+
+            <input
+              className={inputCls}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
           </div>
+
           <div>
-            <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Type</div>
-            <div style={{display:"flex",gap:6}}>
-              {Object.keys(TYPE_COLORS).map(t => (
-                <button key={t} onClick={() => setType(t as Assignment["type"])} style={{
-                  flex:1,padding:"8px 4px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all .15s",textAlign:"center",
-                  background: type===t ? TYPE_COLORS[t]+"22" : "rgba(255,255,255,.03)",
-                  border: `1px solid ${type===t ? TYPE_COLORS[t]+"60" : "rgba(255,255,255,.06)"}`,
-                  color: type===t ? TYPE_COLORS[t] : "rgba(75,85,99,1)",
-                }}>
+            <div
+              style={{
+                fontSize: 9,
+                color: "rgba(75,85,99,1)",
+                textTransform: "uppercase",
+                letterSpacing: ".12em",
+                marginBottom: 5,
+              }}
+            >
+              Type
+            </div>
+
+            <div style={{ display: "flex", gap: 6 }}>
+              {Object.keys(TYPE_COLORS).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setType(t as Assignment["type"])}
+                  style={{
+                    flex: 1,
+                    padding: "8px 4px",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all .15s",
+                    textAlign: "center",
+                    background:
+                      type === t
+                        ? TYPE_COLORS[t] + "22"
+                        : "rgba(255,255,255,.03)",
+                    border: `1px solid ${
+                      type === t
+                        ? TYPE_COLORS[t] + "60"
+                        : "rgba(255,255,255,.06)"
+                    }`,
+                    color:
+                      type === t
+                        ? TYPE_COLORS[t]
+                        : "rgba(75,85,99,1)",
+                  }}
+                >
                   {TYPE_ICONS[t]}
-                  <div style={{fontSize:8,marginTop:2}}>{t}</div>
+                  <div style={{ fontSize: 8, marginTop: 2 }}>{t}</div>
                 </button>
               ))}
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+            }}
+          >
             <div>
-              <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Due Date</div>
-              <input type="date" className={inputCls} value={dueDate} onChange={e => setDueDate(e.target.value)} style={{colorScheme:"dark"}}/>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(75,85,99,1)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".12em",
+                  marginBottom: 5,
+                }}
+              >
+                Due Date
+              </div>
+
+              <input
+                type="date"
+                className={inputCls}
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                style={{ colorScheme: "dark" }}
+              />
             </div>
+
             <div>
-              <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Priority</div>
-              <div style={{display:"flex",gap:5}}>
-                {(Object.keys(PRIORITY_CONFIG) as AssignmentPriority[]).map(p => (
-                  <button key={p} onClick={() => setPriority(p)} style={{
-                    flex:1,padding:"7px 4px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .12s",textAlign:"center",
-                    background: priority===p ? PRIORITY_CONFIG[p].color+"20" : "rgba(255,255,255,.03)",
-                    border: `1px solid ${priority===p ? PRIORITY_CONFIG[p].color+"50" : "rgba(255,255,255,.06)"}`,
-                    color: priority===p ? PRIORITY_CONFIG[p].color : "rgba(75,85,99,1)",
-                  }}>{PRIORITY_CONFIG[p].dot}</button>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(75,85,99,1)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".12em",
+                  marginBottom: 5,
+                }}
+              >
+                Priority
+              </div>
+
+              <div style={{ display: "flex", gap: 5 }}>
+                {(Object.keys(
+                  PRIORITY_CONFIG
+                ) as AssignmentPriority[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPriority(p)}
+                    style={{
+                      flex: 1,
+                      padding: "7px 4px",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all .12s",
+                      textAlign: "center",
+                      background:
+                        priority === p
+                          ? PRIORITY_CONFIG[p].color + "20"
+                          : "rgba(255,255,255,.03)",
+                      border: `1px solid ${
+                        priority === p
+                          ? PRIORITY_CONFIG[p].color + "50"
+                          : "rgba(255,255,255,.06)"
+                      }`,
+                      color:
+                        priority === p
+                          ? PRIORITY_CONFIG[p].color
+                          : "rgba(75,85,99,1)",
+                    }}
+                  >
+                    {PRIORITY_CONFIG[p].dot}
+                  </button>
                 ))}
               </div>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+            }}
+          >
             <div>
-              <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Score</div>
-              <input type="number" className={inputCls} placeholder="e.g. 85" value={score} onChange={e => setScore(e.target.value)} min="0"/>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(75,85,99,1)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".12em",
+                  marginBottom: 5,
+                }}
+              >
+                Score
+              </div>
+
+              <input
+                type="number"
+                className={inputCls}
+                placeholder="e.g. 85"
+                value={score}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setScore(value);
+                }}
+                min="0"
+              />
             </div>
+
             <div>
-              <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Max Score</div>
-              <input type="number" className={inputCls} placeholder="e.g. 100" value={maxScore} onChange={e => setMaxScore(e.target.value)} min="0"/>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: "rgba(75,85,99,1)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".12em",
+                  marginBottom: 5,
+                }}
+              >
+                Max Score
+              </div>
+
+              <input
+                type="number"
+                className={inputCls}
+                placeholder="e.g. 100"
+                value={maxScore}
+                onChange={(e) => setMaxScore(e.target.value)}
+                min="0"
+              />
             </div>
           </div>
+
           <div>
-            <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:5}}>Notes</div>
-            <textarea className={inputCls} placeholder="Any reminders or notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{resize:"none"}}/>
+            <div
+              style={{
+                fontSize: 9,
+                color: "rgba(75,85,99,1)",
+                textTransform: "uppercase",
+                letterSpacing: ".12em",
+                marginBottom: 5,
+              }}
+            >
+              Notes
+            </div>
+
+            <textarea
+              className={inputCls}
+              placeholder="Any reminders or notes..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              style={{ resize: "none" }}
+            />
           </div>
+
           <div>
-            <div style={{fontSize:9,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:6}}>Status</div>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              {(Object.keys(STATUS_CONFIG) as AssignmentStatus[]).map(s => (
-                <button key={s} onClick={() => setStatus(s)} style={{
-                  padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:500,cursor:"pointer",transition:"all .12s",
-                  ...(status===s ? {background:"rgba(124,58,237,.22)",border:"1px solid rgba(124,58,237,.45)",color:"#c084fc"} : {background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",color:"rgba(107,114,128,1)"}),
-                }}>{STATUS_CONFIG[s].label}</button>
-              ))}
+            <div
+              style={{
+                fontSize: 9,
+                color: "rgba(75,85,99,1)",
+                textTransform: "uppercase",
+                letterSpacing: ".12em",
+                marginBottom: 6,
+              }}
+            >
+              Status
+            </div>
+
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {(Object.keys(STATUS_CONFIG) as AssignmentStatus[]).map(
+                (s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStatus(s)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      transition: "all .12s",
+                      ...(status === s
+                        ? {
+                            background: "rgba(124,58,237,.22)",
+                            border:
+                              "1px solid rgba(124,58,237,.45)",
+                            color: "#c084fc",
+                          }
+                        : {
+                            background: "rgba(255,255,255,.04)",
+                            border:
+                              "1px solid rgba(255,255,255,.08)",
+                            color: "rgba(107,114,128,1)",
+                          }),
+                    }}
+                  >
+                    {STATUS_CONFIG[s].label}
+                  </button>
+                )
+              )}
             </div>
           </div>
-          <div style={{display:"flex",gap:8,marginTop:4}}>
-            <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,fontSize:13,fontWeight:500,cursor:"pointer",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(156,163,175,1)"}}>Cancel</button>
-            <button onClick={() => onSave({...assignment, title: title.trim(), due_date: dueDate, type, status, priority,
-              score: score ? parseFloat(score) : null,
-              max_score: maxScore ? parseFloat(maxScore) : null,
-              notes: notes.trim() || undefined,
-            })} style={{flex:2,padding:"11px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:`linear-gradient(135deg,${tc},#0891b2)`,color:"white",border:"none"}}>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button
+              onClick={onClose}
+              style={{
+                flex: 1,
+                padding: "11px",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                background: "rgba(255,255,255,.05)",
+                border: "1px solid rgba(255,255,255,.1)",
+                color: "rgba(156,163,175,1)",
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={() => {
+                const parsedScore = score
+                  ? parseFloat(score)
+                  : null;
+
+                const parsedMaxScore = maxScore
+                  ? parseFloat(maxScore)
+                  : null;
+
+                onSave({
+                  ...assignment,
+                  title: title.trim(),
+                  due_date: dueDate,
+                  type,
+                  status,
+                  priority,
+                  score: parsedScore,
+                  max_score: parsedMaxScore,
+                  notes: notes.trim() || undefined,
+                });
+              }}
+              style={{
+                flex: 2,
+                padding: "11px",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                background: `linear-gradient(135deg,${tc},#0891b2)`,
+                color: "white",
+                border: "none",
+              }}
+            >
               Save Changes
             </button>
           </div>
@@ -334,59 +693,178 @@ export default function CalendarPage() {
   const [sortBy, setSortBy] = useState<"date"|"priority"|"course">("date");
 
   useEffect(() => {
+    setMounted(true);
+
+    // ── FIXED: use /gpa/project/ with Bearer token so scores stay in sync
+    // with GPA predictor saves
     import("@/lib/firebase").then(({ auth }) => {
       const unsubscribe = auth.onAuthStateChanged(user => {
         unsubscribe();
         if (!user) { setLoadingAssignments(false); return; }
+
+        const username = localStorage.getItem("student_user_name") ?? "";
+
         user.getIdToken().then(token => {
-          fetch(`http://localhost:8000/course/`, { headers: { Authorization: `Bearer ${token}` } })
+          // Primary: use /gpa/project/ which returns actual scores
+          fetch(`http://localhost:8000/gpa/project`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
             .then(r => r.json())
-            .then((data: any[]) => {
-              if (!Array.isArray(data)) { setLoadingAssignments(false); return; }
-              setCourses(data.map((c, i) => ({ name: c.course_name, color: COURSE_COLORS[i % COURSE_COLORS.length] })));
+            .then((data: any) => {
+              const projectedCourses: any[] = data.projected_courses ?? [];
+              // Debug: log how many assignments have due_dates
+              const allAssignments = projectedCourses.flatMap((c: any) =>
+                (c.categories ?? []).flatMap((cat: any) => cat.assignments ?? [])
+              );
+              console.log(`[Calendar] ${projectedCourses.length} courses, ${allAssignments.length} assignments, ${allAssignments.filter((a: any) => a.due_date).length} with due_date`);
+
+              // Build courses list
+              const courseList = projectedCourses.map((c: any, i: number) => ({
+                name: c.course_name,
+                color: COURSE_COLORS[i % COURSE_COLORS.length],
+              }));
+              setCourses(courseList);
+
+              // Map assignments from projected courses (includes real scores)
               const mapped: Assignment[] = [];
-              data.forEach((course, ci) => {
+              projectedCourses.forEach((course: any, ci: number) => {
                 const color = COURSE_COLORS[ci % COURSE_COLORS.length];
                 (course.categories ?? []).forEach((cat: any) => {
                   (cat.assignments ?? []).forEach((a: any) => {
-                    if (a.due_date) {
-                      mapped.push({
-                        id: a.assignment_id ?? a.id ?? Math.random(),
-                        title: a.title ?? "Assignment",
-                        course: course.course_name,
-                        course_color: color,
-                        type: guessType(a.title ?? ""),
-                        due_date: a.due_date.slice(0, 10),
-                        status: "not_started",
-                        priority: "medium",
-                        score: a.score ?? null,
-                        max_score: a.max_points ?? null,
-                      });
-                    }
+                    // Include all assignments — use due_date if present, otherwise
+                    // mark as undated so they still appear in list view
+                    const rawDate = a.due_date ? a.due_date.slice(0, 10) : null;
+                    mapped.push({
+                      id: a.assignment_id ?? a.id ?? Math.random(),
+                      title: a.title ?? "Assignment",
+                      course: course.course_name,
+                      course_color: color,
+                      type: guessType(a.title ?? ""),
+                      due_date: rawDate ?? "undated",
+                      status: "not_started",
+                      priority: "medium",
+                      score: a.score ?? null,
+                      max_score: a.max_score ?? null,
+                    });
                   });
                 });
               });
+
+              // Merge with localStorage: keep status, priority, notes from local
+              // but use backend score (so GPA predictor saves show here)
               const saved: Assignment[] = JSON.parse(localStorage.getItem("local_assignments") ?? "[]");
-              setAssignments(saved.length > 0 ? saved : mapped);
+              const savedMap = new Map(saved.map(a => [a.id, a]));
+
+              const merged = mapped.map(a => {
+                const local = savedMap.get(a.id);
+                return {
+                  ...a,
+                  status: local?.status ?? a.status,
+                  priority: local?.priority ?? a.priority,
+                  notes: local?.notes ?? a.notes,
+                  // Always use backend score — it's authoritative
+                  score: a.score,
+                  max_score: a.max_score,
+                };
+              });
+
+              // Keep any manually-added local assignments that aren't in backend
+              const backendIds = new Set(mapped.map(a => a.id));
+              const localOnly = saved.filter(a => !backendIds.has(a.id));
+
+              const final = [...merged, ...localOnly];
+              setAssignments(final);
+              // Only persist assignments that have real dates to localStorage
+              // so stale "undated" entries don't pollute the cache on re-upload
+              saveLocal(final.filter(a => a.due_date !== "undated"));
               setLoadingAssignments(false);
             })
-            .catch(() => setLoadingAssignments(false));
+            .catch(() => {
+              // Fallback to localStorage if backend fails
+              const saved: Assignment[] = JSON.parse(localStorage.getItem("local_assignments") ?? "[]");
+              setAssignments(saved);
+              setLoadingAssignments(false);
+            });
         });
       });
     });
+
+    // Re-fetch assignments when page regains focus (user switches back from GPA predictor)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        import("@/lib/firebase").then(({ auth }) => {
+          const unsubscribe = auth.onAuthStateChanged(user => {
+            unsubscribe();
+            if (!user) return;
+
+            const username = localStorage.getItem("student_user_name") ?? "";
+            const token = user.getIdToken();
+
+            token.then(tok => {
+              fetch(`http://localhost:8000/gpa/project`, {
+                headers: { Authorization: `Bearer ${tok}` }
+              })
+                .then(r => r.json())
+                .then((data: any) => {
+                  const projectedCourses: any[] = data.projected_courses ?? [];
+                  const allAssignments = projectedCourses.flatMap((c: any) =>
+                    (c.categories ?? []).flatMap((cat: any) => cat.assignments ?? [])
+                  );
+
+                  const mapped: Assignment[] = [];
+                  projectedCourses.forEach((course: any, ci: number) => {
+                    const color = COURSE_COLORS[ci % COURSE_COLORS.length];
+                    (course.categories ?? []).forEach((cat: any) => {
+                      (cat.assignments ?? []).forEach((a: any) => {
+                        const rawDate = a.due_date ? a.due_date.slice(0, 10) : null;
+                        mapped.push({
+                          id: a.assignment_id ?? a.id ?? Math.random(),
+                          title: a.title ?? "Assignment",
+                          course: course.course_name,
+                          course_color: color,
+                          type: guessType(a.title ?? ""),
+                          due_date: rawDate ?? "undated",
+                          status: "not_started",
+                          priority: "medium",
+                          score: a.score ?? null,
+                          max_score: a.max_score ?? null,
+                        });
+                      });
+                    });
+                  });
+
+                  const saved: Assignment[] = JSON.parse(localStorage.getItem("local_assignments") ?? "[]");
+                  const savedMap = new Map(saved.map(a => [a.id, a]));
+
+                  const merged = mapped.map(a => {
+                    const local = savedMap.get(a.id);
+                    return {
+                      ...a,
+                      status: local?.status ?? a.status,
+                      priority: local?.priority ?? a.priority,
+                      notes: local?.notes ?? a.notes,
+                      score: a.score,
+                      max_score: a.max_score,
+                    };
+                  });
+
+                  const backendIds = new Set(mapped.map(a => a.id));
+                  const localOnly = saved.filter(a => !backendIds.has(a.id));
+
+                  const final = [...merged, ...localOnly];
+                  setAssignments(final);
+                  saveLocal(final.filter(a => a.due_date !== "undated"));
+                })
+                .catch(err => console.error("[Calendar] Failed to re-fetch assignments:", err));
+            });
+          });
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
-
-  useEffect(() => setMounted(true), []);
-
-  function guessType(title: string): Assignment["type"] {
-    const t = title.toLowerCase();
-    if (t.includes("quiz")) return "quiz";
-    if (t.includes("exam") || t.includes("midterm") || t.includes("final")) return "exam";
-    if (t.includes("project")) return "project";
-    if (t.includes("lab")) return "lab";
-    if (t.includes("hw") || t.includes("homework")) return "homework";
-    return "other";
-  }
 
   const saveLocal = (updated: Assignment[]) =>
     localStorage.setItem("local_assignments", JSON.stringify(updated));
@@ -399,10 +877,9 @@ export default function CalendarPage() {
 
   const daysInMonth    = getDaysInMonth(year, month);
   const firstDayOfWeek = getFirstDay(year, month);
-  const assignmentsOnDay = (day: number) => assignments.filter(a => a.due_date === toDateStr(year, month, day));
+  const assignmentsOnDay = (day: number) => assignments.filter(a => a.due_date !== "undated" && a.due_date === toDateStr(year, month, day));
   const selectedAssignments = selected ? assignments.filter(a => a.due_date === selected) : [];
 
-  // Filtered + sorted assignments for status sections and list view
   const filteredAssignments = useMemo(() => {
     let r = assignments.filter(a =>
       (filterType === "all" || a.type === filterType) &&
@@ -417,20 +894,18 @@ export default function CalendarPage() {
 
   const byStatus = (status: AssignmentStatus) => filteredAssignments.filter(a => a.status === status);
 
-  // Stats
   const today0 = todayStr();
   const totalA = assignments.length;
   const completedA = assignments.filter(a => a.status === "completed").length;
-  const overdueA = assignments.filter(a => a.due_date < today0 && a.status !== "completed").length;
+  const overdueA = assignments.filter(a => a.due_date !== "undated" && a.due_date < today0 && a.status !== "completed").length;
   const completionPct = totalA > 0 ? Math.round((completedA / totalA) * 100) : 0;
   const gradedA = assignments.filter(a => a.score != null && a.max_score != null && a.max_score > 0);
   const avgGrade = gradedA.length > 0
     ? Math.round(gradedA.reduce((s, a) => s + (a.score! / a.max_score!) * 100, 0) / gradedA.length)
     : null;
 
-  // Upcoming: next 7 days, not completed
   const upcoming = assignments
-    .filter(a => { const d = daysUntil(a.due_date); return d >= 0 && d <= 7 && a.status !== "completed"; })
+    .filter(a => { const d = daysUntil(a.due_date); return d >= 0 && d <= 7 && a.status !== "completed" && a.due_date !== "undated"; })
     .sort((a, b) => {
       if (a.due_date !== b.due_date) return a.due_date.localeCompare(b.due_date);
       return priorityOrder[a.priority ?? "medium"] - priorityOrder[b.priority ?? "medium"];
@@ -479,7 +954,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* ── PAGE HEADER ── */}
+        {/* PAGE HEADER */}
         <div className="flex items-center justify-between">
           <div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -504,7 +979,7 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* ── STATS ROW ── */}
+        {/* STATS ROW */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
           {[
             { label:"Total", value: totalA, color:"#818cf8", sub:"assignments", icon:"📚" },
@@ -531,7 +1006,7 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        {/* ── UPCOMING DEADLINES BANNER ── */}
+        {/* UPCOMING DEADLINES BANNER */}
         {upcoming.length > 0 && (
           <div style={{borderRadius:20,padding:"16px 20px",background:"linear-gradient(135deg,rgba(124,58,237,.1),rgba(8,145,178,.08))",border:"1px solid rgba(124,58,237,.25)"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
@@ -567,7 +1042,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* ── CALENDAR TABLE ── */}
+        {/* CALENDAR TABLE */}
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
             <div className="flex items-center gap-3">
@@ -579,7 +1054,6 @@ export default function CalendarPage() {
               </button>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              {/* View toggle */}
               <div style={{display:"flex",borderRadius:9,overflow:"hidden",border:"1px solid rgba(255,255,255,.1)"}}>
                 {(["month","list"] as const).map(v => (
                   <button key={v} onClick={() => setView(v)} style={{padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer",border:"none",transition:"all .15s",
@@ -588,7 +1062,6 @@ export default function CalendarPage() {
                   </button>
                 ))}
               </div>
-              {/* Type legend */}
               <div className="hidden lg:flex items-center gap-3">
                 {Object.keys(TYPE_COLORS).map(t => (
                   <div key={t} className="flex items-center gap-1">
@@ -667,14 +1140,18 @@ export default function CalendarPage() {
                   <div style={{fontSize:40,marginBottom:10}}>📭</div>
                   <p>No assignments match your filters</p>
                 </div>
-              ) : Array.from(new Set(filteredAssignments.map(a => a.due_date))).sort().map(date => {
+              ) : Array.from(new Set(filteredAssignments.map(a => a.due_date))).sort((a,b) => {
+                  if (a === "undated") return 1;
+                  if (b === "undated") return -1;
+                  return a.localeCompare(b);
+                }).map(date => {
                 const dayA = filteredAssignments.filter(a => a.due_date === date);
                 const d = daysUntil(date);
                 return (
                   <div key={date}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,marginTop:4}}>
                       <span style={{fontSize:11,fontWeight:800,color:d<0?"#f87171":d===0?"#22d3ee":"rgba(156,163,175,1)"}}>
-                        {d===0?"TODAY":d<0?`${Math.abs(d)}d ago`:d===1?"TOMORROW":new Date(date+"T00:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
+                        {date==="undated"?"📌 NO DUE DATE":d===0?"TODAY":d<0?`${Math.abs(d)}d ago`:d===1?"TOMORROW":new Date(date+"T00:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
                       </span>
                       <div style={{flex:1,height:1,background:d<0?"rgba(239,68,68,.2)":d===0?"rgba(34,211,238,.2)":"rgba(255,255,255,.06)"}}/>
                       <span style={{fontSize:10,color:"rgba(75,85,99,1)"}}>{dayA.length}</span>
@@ -717,7 +1194,7 @@ export default function CalendarPage() {
           )}
         </div>
 
-        {/* ── SELECTED DAY POPUP (month view only) ── */}
+        {/* SELECTED DAY POPUP */}
         {selected && view === "month" && (
           <div className="backdrop-blur-xl bg-white/5 border border-purple-400/30 rounded-3xl p-6 animate-fade-in">
             <div className="flex items-center justify-between mb-4">
@@ -787,7 +1264,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* ── FILTER BAR ── */}
+        {/* FILTER BAR */}
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:10,color:"rgba(75,85,99,1)",textTransform:"uppercase",letterSpacing:".1em"}}>Filter:</span>
           <select value={filterType} onChange={e => setFilterType(e.target.value)}
@@ -824,7 +1301,7 @@ export default function CalendarPage() {
           </span>
         </div>
 
-        {/* ── STATUS SECTIONS ── */}
+        {/* STATUS SECTIONS */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {(Object.keys(STATUS_CONFIG) as AssignmentStatus[]).map(status => {
             const s = STATUS_CONFIG[status];
