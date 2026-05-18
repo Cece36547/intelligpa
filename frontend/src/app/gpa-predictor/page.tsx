@@ -1027,7 +1027,9 @@ const res = await fetch(
                                         alert("Failed to update score");
                                         return;
                                       }
-                                      const refreshed = await fetch(`http://localhost:8000/gpa/project/${username}`);
+                                      const refreshed = await fetch(`http://localhost:8000/gpa/project`, {
+                                        headers: { Authorization: `Bearer ${token}` }
+                                      });
                                       const refreshedData = await refreshed.json();
 
                                       setRiskAnalysis(refreshedData.risk_analysis ?? null);
