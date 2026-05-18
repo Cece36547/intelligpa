@@ -61,12 +61,36 @@ const gcBd=(l:string)=>l.startsWith("A")?"rgba(74,222,128,.25)":l.startsWith("B"
 function catPct(cat:Category,h=false):number|null{
   const it=cat.assignments.filter(a=>(h&&a.hypothetical!=null?a.hypothetical:a.score)!==null);
   if(!it.length)return null;
-  return it.reduce((s,a)=>s+(h&&a.hypothetical!=null?a.hypothetical!:a.score!),0)/it.reduce((s,a)=>s+a.max_score,0)*100;
+
+  const earned=it.reduce((s,a)=>{
+    const raw=h&&a.hypothetical!=null?a.hypothetical!:a.score!;
+    const max=Number(a.max_score)||100;
+    return s+Math.max(0,Math.min(Number(raw),max));
+  },0);
+
+  const possible=it.reduce((s,a)=>s+(Number(a.max_score)||100),0);
+  if(!possible)return null;
+
+  const pct=(earned/possible)*100;
+  return Math.max(0,Math.min(100,pct));
 }
 function cPct(c:Course,h=false):number|null{
   let ws=0,wu=0;
-  c.categories.forEach(cat=>{const g=catPct(cat,h);if(g!=null){ws+=g*(cat.weight/100);wu+=cat.weight;}});
-  return wu?ws/wu*100:null;
+
+  c.categories.forEach(cat=>{
+    const g=catPct(cat,h);
+    const weight=Number(cat.weight)||0;
+
+    if(g!=null && weight>0){
+      ws+=g*weight;
+      wu+=weight;
+    }
+  });
+
+  if(!wu)return null;
+
+  const pct=ws/wu;
+  return Math.max(0,Math.min(100,pct));
 }
 function calcGpa(cs:Course[],h=false):number|null{
   const g=cs.filter(c=>cPct(c,h)!=null);if(!g.length)return null;

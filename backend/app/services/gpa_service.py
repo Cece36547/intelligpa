@@ -9,6 +9,8 @@ GRADE_POINTS = {
     "B-": 2.7,
     "C+": 2.3,
     "C": 2.0,
+    "C-": 1.7,
+    "D+": 1.3,
     "D": 1.0,
     "F": 0.0,
 }
@@ -29,6 +31,10 @@ def percentage_to_letter(percentage: float) -> str:
         return "C+"
     elif percentage >= 73:
         return "C"
+    elif percentage >= 70:
+        return "C-"
+    elif percentage >= 67:
+        return "D+"
     elif percentage >= 60:
         return "D"
     return "F"
@@ -128,7 +134,8 @@ def project_course_percentage(course) -> dict:
 
         item["projected_average_used"] = round(used_average, 2)
 
-    projected_percentage = projected_total if total_weight > 0 else 0.0
+    projected_percentage = (projected_total / total_weight) * 100 if total_weight > 0 else 0.0
+    projected_percentage = max(0, min(100, projected_percentage))
 
     return {
         "projected_percentage": round(projected_percentage, 2),
@@ -345,7 +352,8 @@ def simulate_course_what_if(course, hypothetical_scores: list[dict]) -> dict:
             "simulated_average": None if category_average is None else round(category_average, 2),
         })
 
-    simulated_percentage = projected_total if total_weight > 0 else 0.0
+    simulated_percentage = (projected_total / total_weight) * 100 if total_weight > 0 else 0.0
+    simulated_percentage = max(0, min(100, simulated_percentage))
     simulated_letter = percentage_to_letter(simulated_percentage)
 
     return {
